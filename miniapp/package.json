@@ -7,7 +7,11 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "test:ui": "node tests/ui.cjs"
+    "test:ui": "node tests/ui.cjs",
+    "dev:desktop": "vite --config desktop/vite.config.ts --mode desktop-demo",
+    "build:desktop": "tsc --project desktop/tsconfig.json --noEmit && vite build --config desktop/vite.config.ts",
+    "preview:desktop": "vite preview --config desktop/vite.config.ts",
+    "test:desktop": "node desktop/tests/ui.cjs"
   },
   "dependencies": {
     "react": "^19.2.0",
