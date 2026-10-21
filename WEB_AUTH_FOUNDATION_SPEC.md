@@ -1,0 +1,163 @@
+# ТЗ: feature/web-auth-foundation — первый локальный программный PR
+
+Дата: 21.10.2026. **Спецификация, не реализация и не разрешение начать её.**
+Основание: решения владельца в `WEB_AUTH_NEXT_STAGE.md` и
+`WEB_AUTH_ARCHITECTURE.md`. Начало — только после принятия обновлённого PR №4
+и следующего разрешения. Новую ветку сейчас не создавать.
+
+## 1. Границы
+
+Будущий PR добавляет изолированные модели/чистые policy-функции и явную миграцию
+синтетической schema4 → schema5. Не добавляет рабочий login, cookies middleware,
+API/router, UI, bootstrap CLI, отправку сообщений, CRM или новые production-
+зависимости. Не подключается к startup/Store.initialize, не меняет рабочую
+SCHEMA_VERSION=4 и существующую Telegram HMAC/ACL-логику. Новые функции нельзя
+импортировать из production entrypoint до отдельного compatibility review.
+Не использовать рабочие SQLite или их копии; только вымышленные fixtures.
+Не писать собственную криптографию или временный небезопасный password fallback.
+
+## 2. Предлагаемая карта будущих файлов
+
+Это имена для следующего review, файлов сейчас нет.
+
+| Файл | Назначение |
+|---|---|
+| planner/web_auth/__init__.py | Изолированный пакет без startup/import side effects |
+| planner/web_auth/models.py | Credential/session/password-action DTO, закрытые enums, явные timestamps; без доверенной роли из клиента |
+| planner/web_auth/policy.py | Чистые проверки active/roles/ownership, сроков и одноразового действия; clock передаётся явно |
+| planner/web_auth/schema.py | Константы целевой схемы 5, список отдельных DDL statements, индексы, manifest/checksum |
+| planner/web_auth/migration.py | Явная миграция переданного тестового соединения, валидация версии/структуры, транзакция, повтор/rollback |
+| tests/test_web_auth_foundation.py | Матрица прав и времени без сети/БД production |
+| tests/test_web_auth_schema.py | Типы, FK, CHECK, UNIQUE, индексы и целостность |
+| tests/test_web_auth_migration.py | Synthetic 4→5, повтор, сбои, конкуренция и сохранность данных |
+| tests/web_auth_fixtures.py | Создание синтетической schema4 во временном каталоге, снимки всех бизнес-сущностей |
+
+Новые production-зависимости не нужны для моделей и SQLite-тестов. Реальный
+Argon2/hash verification откладывается до отдельного dependency/security PR;
+модели могут содержать только непрозрачное поле password_hash и фиктивные
+непригодные для входа тестовые значения. Не добавлять успешный mock-auth в API.
+Текущий упаковщик выбирает Python-модули planner верхнего уровня: включение
+нового подпакета и проверка release manifest должны пройти отдельное review
+перед будущим auth-релизом; существующий архив 2.1.1 не переупаковывать.
+
+## 3. Предлагаемый проект дополнительных таблиц
+
+Одна planner.db, прежние employees.id и роли. Это проект DDL для будущего PR,
+а не уже утверждённая физическая схема. Существующие таблицы, индексы и триггеры
+не удалять/пересоздавать. Каскадное удаление бизнес-истории запрещено.
+Все timestamps — UTC epoch seconds, календарные 90/30 дней здесь означают
+фиксированные интервалы по 86400 секунд, без зависимости от часового пояса UI.
+
+| Таблица | Поля и ограничения проекта | Индексы/проверки |
+|---|---|---|
+| web_credentials | id PK; employee_id NOT NULL UNIQUE FK employees(id) ON DELETE RESTRICT; login_normalized NOT NULL UNIQUE; password_hash nullable лишь до активации; active CHECK 0/1; credential_version >=1; created_at/updated_at | Активная credential требует непустого password_hash; роль/Telegram ID здесь отсутствуют; нормализацию login согласовать до фиксации DDL |
+| web_sessions | token_hash PK NOT NULL; credential_id FK RESTRICT; credential_version; issued_at; absolute_expires_at; last_visited_at; revoked_at nullable | credential_id, absolute_expires_at, last_visited_at; CHECK порядка времён и absolute_expires_at=issued_at+90 дней; отзыв/версия проверяются при использовании |
+| web_password_actions | id PK; token_hash UNIQUE NOT NULL; credential_id FK RESTRICT; purpose CHECK invitation/reset; issued_by FK employees RESTRICT; issued_at/expires_at; used_at/revoked_at | credential_id/purpose; expiry; не более одного непогашенного/неотозванного действия на credential+purpose (partial UNIQUE); reset TTL=30 минут; invitation TTL пока не задавать default |
+| web_login_attempts | id PK; login bucket; ограниченный идентификатор источника; occurred_at; outcome enum | bucket/time и source/time; никаких raw passwords/token/initData; состав источника/retention до production согласовать |
+| web_auth_audit | id PK; event enum; actor_employee_id nullable FK RESTRICT; target_employee_id nullable FK RESTRICT; occurred_at; request correlation; ограниченные details | actor/time, target/time; system actor отдельно, без фиктивного employee; никаких паролей/секретов/cookies/raw IP в details |
+
+Внешние ключи явно включаются до начала транзакции и проверяются чтением PRAGMA.
+Ссылки employee_id не создают/не переименовывают сотрудников. Отсутствие Telegram
+ID допустимо для web. Проверка manager/supervisor и employee.active выполняется
+по актуальным employees, а не по закешированному credential role.
+Срок 30 дней вычисляется по last_visited_at; polling не обновляет это поле.
+Не пытаться выразить проверки текущего времени или изменяемой роли через CHECK.
+Активность связанной credential и employee, generation/revocation — проверки
+policy внутри будущей транзакции операции, а не одноразовая проверка при login.
+Серверный протокол настоящего посещения ещё согласуется; foundation получает
+явный тип события и доказывает, что background-событие не изменяет last_visited.
+
+## 4. Изолированная миграция на синтетических БД
+
+1. Тест создаёт TemporaryDirectory и schema4 через действующий Store на пустом
+   пути, затем заполняет только вымышленные сущности. Production .env не читать.
+2. Явная функция миграции принимает соединение; нет CLI, путей из env или startup
+   hook. Отклонить уже открытую транзакцию, неверную версию и неизвестный manifest.
+   Не экспортировать вызов в рабочее приложение.
+3. Проверить foreign_keys=ON; BEGIN IMMEDIATE; после получения блокировки повторно
+   прочитать user_version и структуру, чтобы исключить гонку двух миграторов.
+4. Для 4 проверить ожидаемые таблицы/индексы/FK и отсутствие конфликтующих auth
+   объектов; выполнять отдельные execute(DDL). Не применять executescript,
+   способный неявно завершить транзакцию. Не применять INSERT OR REPLACE к данным.
+5. Добавить таблицы и индексы; записать версию 5 и checksum manifest в новой строке
+   существующего schema_migrations(version, applied_at, details), не меняя её
+   структуру и прежние строки. PRAGMA user_version=5 — внутри той же транзакции.
+6. foreign_key_check пуст и integrity_check=ok; сверка manifest и сохранности
+   бизнес-данных; commit только после всех проверок. Любая ошибка/прерывание
+   до commit откатывает DDL, registry и version. Ошибку не выдавать за успех.
+7. Повтор на известной schema5 валидирует полный manifest/checksum и возвращает
+   no-op без повторной записи журнала. Неполная/изменённая схема 5 отвергается.
+   Версии ниже 4/выше 5 — явный отказ, без попытки исправить неизвестную БД.
+
+Функция работает только с синтетическими fixtures на этом этапе разработки.
+Это не разрешение применить её к реальному файлу. Рабочий Store со своим
+SCHEMA_VERSION=4 продолжает отвергать schema5, и соответствующий тест должен
+сохраниться. Ни автозапуск миграции, ни снятие guard не входят в foundation.
+
+## 5. Матрица будущих тестов
+
+| Проверка | Ожидаемый результат |
+|---|---|
+| Web employee без Telegram ID/ACL | Независимая policy допускает активную credential; Telegram policy не меняется |
+| Employee inactive / credential inactive / смена роли | Оба канала блокируются при inactive employee; только web при inactive credential; актуальные права |
+| Manager свой/чужой, bot-admin, supervisor | Только своё / отказ; bot admin не supervisor; прежние права руководителя |
+| 90 дней от issued_at | До границы допустимо, на границе/после отказ; посещение/ротация не сдвигает исходную границу |
+| 30 дней без посещения | До границы допустимо, на границе отказ; foreground обновляет, background нет |
+| Reset/revoke/logout | Отозванная generation/session не принимается; reset одноразовый, граница 30 минут; supervisor-manager scope и reauth intent |
+| Synthetic 4→5 и повтор | Один набор таблиц/индексов/registry; повтор без изменений; integrity/FK OK |
+| Нарушения ограничений | Duplicate login/employee/token/action, orphan FK, неверные enum/времена отклонены |
+| Поддельная/неполная schema5 и неизвестная версия | Отказ без изменения файла/данных |
+| Сбой после каждого DDL и перед commit | После reopen исходная schema4 и исходные бизнес-данные/registry; нет auth-обломков |
+| Два мигратора, busy/lock, повтор после сбоя | Один commit, второй валидирует no-op либо ограниченно отказывает; повтор безопасен |
+| Crash отдельного тестового процесса | Прерывание до commit откатывается после reopen; после commit сохраняется полная схема |
+| Прежние сущности после миграции | Все колонки/ключи/значения, связи и количество строк прежних таблиц совпадают |
+| Оригинальный Store и schema5 | Явный отказ старого backend остаётся, не выдаётся за совместимость |
+
+Fixture содержит менеджеров и руководителей с synthetic ID, inactive employee,
+plans draft/approved/closed, задачи и таймеры, результаты/комментарии, goal_requests,
+audit/system_audit, immutable reports, distributions/distribution_tasks/
+distribution_leads/import_attempts и schema_migrations. Полный список брать из
+sqlite_master, чтобы новая сущность не выпала из проверки. Снимки сравнивать по
+всем полям и ключам, не только количеству; прежние определения SQL/индексы/триггеры
+и последовательности сохраняются. Новая registry-строка 5 — единственное допустимое
+дополнение в старой таблице. Тесты не читают реальные базы или секреты.
+
+Cookie/CSRF, закрытие настоящего браузера, реальная password verification,
+HTTP authorization и supervisor reauth нельзя считать проверенными pure-тестами:
+это критерии следующих session/API/browser PR. В foundation покрывается контракт
+policy, а не работоспособный вход. Не включать production auth ради этих тестов.
+
+## 6. Отдельный план compatibility bridge
+
+После foundation — самостоятельный reviewed PR `feature/schema5-compatibility`.
+Он поддерживает schema4 и строго известную schema5, валидирует auth manifest,
+не создаёт auth-таблицы на schema4 и не открывает web-вход. Старый запрет >4
+заменяется проверенной allowlist/структурой, а не безусловным допуском любых версий.
+
+На синтетических БД проверить старые Telegram CRUD, таймеры, закрытие дня,
+цели/согласования, импорт и историю на обеих схемах; schema6/испорченная 5 — отказ.
+Сценарий отката: bridge на 4 → тестовая миграция 5 → новые бизнес-записи → возврат
+bridge с той же актуальной 5 → все новые записи сохранены. Отдельно проверить
+backup API при активных соединениях, тестовое восстановление и права файлов.
+
+Сначала принять и сохранить bridge image/artifact с SHA и результатами тестов;
+лишь затем обсуждать auth-релиз и отдельное разрешение production migration после
+backup/restore trial. Исходный 2.1.1 не является rollback image для schema5.
+Возврат старой резервной копии может исключить новые записи: это аварийное решение
+с отдельным сохранением текущей БД/очереди и согласованной сверкой, не основной откат.
+Отключение web на bridge должно исключать доступ и мутации auth, сохраняя auth-аудит.
+
+## 7. Критерии приёмки будущего foundation PR
+
+- Изменены только согласованные изолированные модули, синтетические тесты и docs;
+  нет новых production deps, роутов, UI, startup hooks или серверных действий.
+- Рабочая SCHEMA_VERSION=4, Store.initialize и Telegram API контракты сохранены.
+- Все проверки §5 прошли; общий Python regression без внешней сети успешен.
+- Повтор/сбой/конкуренция доказаны тестами, не только описаны; реальные базы не открывались.
+- Существующие планы, задачи, таймеры, отчёты, аудит и согласования сохранены полностью.
+- DDL, login normalization и неутверждённые параметры вынесены на review без скрытых defaults.
+- Отчёт перечисляет файлы/тесты/ограничения и явно отделяет foundation от ещё неготового bridge.
+- Нет заявления о production-готовности web или разрешения на миграцию; PR не объединяется автоматически.
+
+После документационного этапа остановиться. Настоящая спецификация не меняет
+код, БД, зависимости, Docker/Nginx, архивы 2.1.1 или production.

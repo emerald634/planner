@@ -1,8 +1,10 @@
-# Проект web-авторизации — на согласование, без реализации
+# Web-авторизация: утверждённые принципы, без реализации
 
 21.10.2026. Ни endpoints, ни таблицы, ни миграции из этого документа не созданы.
 Текущий прототип изолирован; production API по-прежнему требует Telegram HMAC.
-Внедрение — отдельный небольшой PR после принятия архитектуры и политики доступа.
+Бизнес-правила утверждены 21.10.2026; технические предложения ниже ещё согласуются.
+Внедрение требует принятия обновлённого PR №4 и следующего разрешения.
+Первый будущий PR описан в `WEB_AUTH_FOUNDATION_SPEC.md`.
 
 ## Общая идентичность и границы
 
@@ -20,11 +22,12 @@ actor остаётся без изменений; web actor проверяет c
 `/api/...` не начинает молча принимать cookie. Ошибка одного способа авторизации
 не вызывает fallback на другой. Сам web не запускает второй Telegram polling.
 
-**Открытая политика:** нынешний Telegram actor дополнительно проверяет access.db.
-Нельзя молча исключить эту проверку для нового канала. Для первого web-релиза
-предлагается сохранить текущий ACL для уже привязанных сотрудников; доступ
-сотрудников без Telegram-привязки и отделение web-доступа от bot ACL требуют
-явного решения. Нельзя технически подменять web-вход фиктивным initData.
+**Утверждено 21.10.2026:** web-вход не зависит от Telegram ID и bot ACL.
+Общие employees.id/active/roles применяются к обоим каналам. Отключение employee
+блокирует оба; отключение web credential — только web. /removeuser и блокировка
+бота не меняют web-доступ автоматически. Telegram HMAC/ACL остаются прежними.
+История: предложение сохранить Telegram ACL для первого web-релиза заменено
+этим решением; открытой альтернативой оно больше не является.
 
 ## Пароли и сессии
 
@@ -42,8 +45,13 @@ revoked times и credential version. При входе — новый токен
 
 Cookie: `__Host-planner_session`, HttpOnly, Secure, SameSite=Strict, Path=/,
 без Domain. Web и API на одном HTTPS origin, без wildcard credential CORS.
-Предлагаемые сроки на согласование: 30 минут бездействия, 12 часов абсолютный
-срок. Обновление last_seen группировать, чтобы не писать SQLite каждую секунду.
+Утверждённые сроки: **90 дней от входа** абсолютно и **30 дней без посещений**.
+Посещения не продлевают абсолютный срок. Cookie постоянная, Max-Age/Expires
+ограничен исходной абсолютной границей. Краткое бездействие, закрытие браузера
+и выключение компьютера не завершают сессию. Polling/health не считаются посещением.
+Протокол foreground-посещений и частота записи last_visited ещё проектируются.
+История: предложенные 12 часов / 30 минут отменены 21.10.2026.
+Чувствительные действия руководителя требуют повторного подтверждения пароля.
 Очистка истёкших сессий ограниченными пакетами. Роль из сессии не кешировать.
 Основание: [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 
@@ -78,7 +86,8 @@ login, dummy hash-проверка, не раскрывать существов
 | POST /api/web/accounts/{id}/reset | Supervisor с повторным вводом пароля, отзыв всех сессий |
 | /api/web/plans, tasks, requests… | Тот же Store и те же полномочия объектов |
 
-Возможная schema 5, ещё не утверждена: web_credentials(employee_id UNIQUE FK,
+Принцип additive schema5 в одной planner.db утверждён; точный DDL ещё проектируется.
+Предлагаемый состав: web_credentials(employee_id UNIQUE FK,
 login_normalized UNIQUE, password_hash, active, credential_version, timestamps),
 web_sessions(token_hash PK, credential FK, created/last_seen/expires/revoked),
 ограниченная таблица login_attempts и auth_audit без паролей/cookie. Индексы для
@@ -86,30 +95,45 @@ expired/token/account lookup. Роли в credentials не хранить. Не 
 employees/старые планы/задачи/таймеры/отчёты/аудит и не создавать второй планировщик.
 Тестовая миграция 4→5 должна быть транзакционной, повторяемой и с rollback при
 внедрённом сбое. Существующий код, допускающий только schema≤4, не сможет открыть
-5: откат образа/базы нужно проектировать отдельно с сохранением новых записей.
+5. Утверждён порядок: сначала проверенный backend bridge для schema4+schema5,
+потом отдельно разрешённая production-миграция после backup/restore trial.
+Основной откат — bridge с актуальной БД, не исходный 2.1.1 и не старая копия.
+На foundation-этапе миграция изолирована и запускается явно лишь на синтетических
+БД; Store.initialize, рабочая SCHEMA_VERSION=4 и guard новой схемы не меняются.
+Также проектируется web_password_actions для одноразовых invitation/reset.
 
 Bootstrap первого web-supervisor — отдельная локальная защищённая админ-команда
 в согласованное окно, не публичная регистрация. Руководитель не меняет роль
 через web credential API, не создаёт произвольного supervisor и не сбрасывает
 чужие supervisor credentials через manager CRUD. Защитить последний доступный
-supervisor от потери входа. Одноразовый reset secret — не в аудит/URL; механизм
-доставки и необходимость must_change_password нужно отдельно согласовать.
+supervisor от потери входа. Bootstrap/recovery — пока техническое предложение.
+Утверждено: supervisor создаёт учётки существующим manager, инициирует reset
+после подтверждения собственного пароля; одноразовый reset-код — 30 минут.
+Менеджер сам выбирает постоянный пароль, руководитель его не видит. Reset
+отзывает web-сессии; аудит фиксирует инициатора без пароля/кода. Погашение
+атомарное; перед установкой пароля повторно отозвать сессии. Доставка секрета,
+отдельный TTL приглашения и recovery supervisor требуют согласования.
 
 ## Обязательные тесты перед реальными данными
 
 - Оба manager и supervisor; IDOR для чужих планов/задач/requests/reports/notices.
-- Смена/отключение роли и bot ACL действует на следующем запросе; admin бота не supervisor.
-- Expiry, idle, replay revoked session, fixation, reset/logout/revoke в нескольких процессах.
+- Актуальные role/active проверяются на каждом запросе; bot ACL влияет только
+  на Telegram, web без Telegram ID работает; admin бота не supervisor.
+- Границы 90/30 дней, посещения/polling, сохранение cookie после закрытия браузера,
+  replay revoked session, fixation, reset/logout/revoke в нескольких процессах.
 - Cookie flags; отсутствие хранения токенов на frontend; wrong/missing CSRF и Origin,
   login CSRF, попытка cookie в Telegram API и initData в web API — отказ.
 - Rate limit для неизвестных/активных/отключённых login, IP spoofing, concurrency,
   контроль CPU/RAM/SQLite locks и отсутствие account enumeration.
 - SQL/HTML injection, ошибки БД/хеширования без утечки секретов, auth audit.
-- Миграция на временной копии с сохранением всех прежних сущностей, повтор,
+- Миграция только синтетической schema4 с сохранением всех прежних сущностей, повтор,
   прерванный запуск, backup/restore и реалистичный откат с последующими записями.
 - Общий серверный таймер между Mini App и web, stale mutations/revisions,
   confirm idempotency, locked imported targets, closed reports immutability.
 
-До реализации согласовать ACL без Telegram, сроки сессий/лимиты, bootstrap/reset,
-HTTPS-origin и референсы дизайна; получить полную памятку новичков и контракт
-CRM-событий. Этот документ не является разрешением на миграцию или установку.
+Открыты технические параметры: rate/concurrency/retention, password/hash library
+и замеры RAM, login normalization, visit protocol, bootstrap/recovery, доставка
+секрета/приглашения, sensitive-action reauth protocol, точный DDL и HTTPS origin.
+Независимость каналов, 90/30 дней, manager reset и порядок bridge уже утверждены.
+Референсы визуального shell приняты; памятка новичков и CRM-контракт относятся
+к отдельным будущим функциям. Документ не разрешает миграцию или установку.
