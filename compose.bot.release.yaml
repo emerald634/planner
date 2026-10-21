@@ -1,0 +1,40 @@
+name: bitrix-missed-calls-bot
+services:
+  bot:
+    image: ${BOT_RELEASE_IMAGE:?Set a unique bot release tag}
+    build:
+      context: .
+      dockerfile: deploy/Bot.Dockerfile
+    user: "10001:10001"
+    env_file:
+      - ${PLANNER_BOT_ENV_FILE:?Existing bot env absolute path required}
+    environment:
+      ACCESS_DB_PATH: /data/access.db
+      DISTRIBUTION_QUEUE_PATH: /distribution-queue/confirmations.db
+      DISTRIBUTION_CONFIRMER_IDS: ${DISTRIBUTION_CONFIRMER_IDS:?Explicit capability list required}
+      PLANNER_ACTIVE_MANAGER_IDS: ${PLANNER_ACTIVE_MANAGER_IDS:?Active manager list required}
+      MANAGER_1_TELEGRAM_ID: ${MANAGER_1_TELEGRAM_ID:-}
+      MANAGER_2_TELEGRAM_ID: ${MANAGER_2_TELEGRAM_ID:-}
+      MANAGER_3_TELEGRAM_ID: ${MANAGER_3_TELEGRAM_ID:-}
+    volumes:
+      - type: bind
+        source: ${PLANNER_ACCESS_DIR:?Verified bot data directory required}
+        target: /data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${DISTRIBUTION_QUEUE_DIR:?Dedicated queue directory required}
+        target: /distribution-queue
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

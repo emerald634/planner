@@ -1,0 +1,15 @@
+**
+!requirements.txt
+!access.py
+!bitrix.py
+!bot.py
+!config.py
+!distribution.py
+!keyboards.py
+!reminders.py
+!planner/
+!planner/__init__.py
+!planner/distribution_queue.py
+!deploy/
+!deploy/Bot.Dockerfile
+!deploy/Bot.Dockerfile.dockerignore

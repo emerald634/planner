@@ -1,0 +1,13 @@
+# Bootstrap ACME site only, no plaintext access to the Mini App.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name planner.example.com;
+    access_log off;
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/bitrix-workday-planner-acme;
+        default_type text/plain;
+        try_files $uri =404;
+    }
+    location / { return 404; }
+}

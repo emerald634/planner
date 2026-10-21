@@ -1,0 +1,12 @@
+# Only application sources and dependency declarations enter the build context.
+**
+!Dockerfile
+!.dockerignore
+!requirements.txt
+!access.py
+!bitrix.py
+!bot.py
+!config.py
+!distribution.py
+!keyboards.py
+!reminders.py

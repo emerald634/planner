@@ -1,0 +1,63 @@
+# Separate Compose project. Does not replace compose.yaml or restart the bot.
+name: bitrix-workday-planner
+services:
+  planner:
+    image: ${PLANNER_IMAGE:?Set a unique Mini App release image tag}
+    build:
+      context: .
+      dockerfile: deploy/Planner.Dockerfile
+    # Read .env for interpolation via CLI; pass only the needed secrets.
+    user: "10001:10001"
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?Existing bot token is required}
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+      PLANNER_ENV: production
+      TZ: Europe/Moscow
+      PLANNER_DB_PATH: /planner-data/planner.db
+      ACCESS_DB_PATH: /bot-data/access.db
+      DISTRIBUTION_QUEUE_PATH: /distribution-queue/confirmations.db
+      DISTRIBUTION_CONFIRMER_IDS: ${DISTRIBUTION_CONFIRMER_IDS:?Explicit capability list required}
+    ports:
+      - "127.0.0.1:${PLANNER_PORT:?Verify a free port on the VPS}:8000"
+    volumes:
+      - type: bind
+        source: ${DISTRIBUTION_QUEUE_DIR:?Set the dedicated queue directory}
+        target: /distribution-queue
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PLANNER_ACCESS_DIR:?Set the verified host directory containing access.db}
+        target: /bot-data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${PLANNER_DATA_DIR:?Set the dedicated persistent planner directory}
+        target: /planner-data
+        bind:
+          create_host_path: false
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz',timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

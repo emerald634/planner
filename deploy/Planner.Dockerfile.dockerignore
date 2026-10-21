@@ -1,0 +1,16 @@
+**
+!requirements-planner.txt
+!requirements-planner.lock.txt
+!access.py
+!planner/
+!planner/*.py
+!miniapp/
+!miniapp/dist/
+!miniapp/dist/index.html
+!miniapp/dist/assets/
+!miniapp/dist/assets/*.js
+!miniapp/dist/assets/*.css
+!frontend-build.json
+!deploy/
+!deploy/Planner.Dockerfile
+!deploy/Planner.Dockerfile.dockerignore
