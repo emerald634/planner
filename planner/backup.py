@@ -20,6 +20,15 @@ def read_only(path: Path):
 
 def validate(connection):
     version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if version == 5:
+        try:
+            from .schema5_compatibility import validate_schema5
+        except ModuleNotFoundError as error:
+            if error.name != __package__ + ".schema5_compatibility":
+                raise
+            raise ValueError("Неизвестная версия базы планировщика.") from None
+        validate_schema5(connection)
+        return
     if version not in (1, 2, 3, 4):
         raise ValueError("Неизвестная версия базы планировщика.")
     tables = {r[0] for r in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}

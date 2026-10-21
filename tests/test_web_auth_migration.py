@@ -42,13 +42,12 @@ class MigrationTests(unittest.TestCase):
         for table, snapshot in before[1].items():
             self.assertTrue(snapshot["rows"], table)
 
-    def test_store_stays_schema4_and_refuses_schema5(self):
+    def test_store_stays_schema4_and_bridge_opens_known_schema5(self):
         Store(self.path).initialize()
         self.assertEqual(SCHEMA_VERSION, 4)
         db = self.db()
         migrate_synthetic(db, applied_at=NOW)
-        with self.assertRaisesRegex(RuntimeError, "более новой"):
-            Store(self.path).initialize()
+        Store(self.path).initialize()
         self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 5)
 
     def test_row_factory_explicit_autocommit_and_no_entrypoint_import(self):

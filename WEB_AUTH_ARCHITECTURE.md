@@ -1,12 +1,25 @@
 # Web-авторизация: утверждённые принципы, без реализации
 
+Актуализация bridge 21.10.2026: PR №5 принят (`6501ef2`); отдельным заданием
+разрешён и реализован локальный schema5-compatibility. Store сохраняет цель
+миграций 4, но дополнительно открывает только известную 5 после строгой read-only
+проверки структуры/registry/checksum/FK/integrity. На 4 не создаёт auth-таблицы.
+На 5 не вызывает migration, не ремонтирует и не меняет auth-данные. Backup API
+поддерживает известную 5. Отдельный профиль --bridge включает только нужные
+schema/validation, без policy/password/migration. Профили legacy не получают
+bridge capability. Реальные web routes, cookie login и account-admin отсутствуют.
+Отчёт: SCHEMA5_COMPATIBILITY_REPORT.md; упаковка: SCHEMA5_BRIDGE_RELEASE.md.
+Физический DDL не утверждён для production; Linux/Docker smoke и отдельное
+разрешение на установку/миграцию остаются обязательны. История foundation ниже
+описывает прежний этап и не заменяет эти новые результаты.
+
 21.10.2026. PR №4 принят (merge `50ec7e8`); по последующему разрешению выполнен
 локальный foundation: изолированные модели/policy, проект DDL и явная миграция
 только синтетических БД. Рабочих endpoints, password verifier и production
 schema5 нет; API по-прежнему требует Telegram HMAC. Физический DDL/reset_pending
 остаётся проектом для review. Спецификация — `WEB_AUTH_FOUNDATION_SPEC.md`,
 реальные результаты — `WEB_AUTH_FOUNDATION_REPORT.md`. Compatibility bridge
-ещё не реализован и требует следующего этапа.
+теперь реализован локально отдельным этапом, ждёт review (см. актуализацию выше).
 
 ## Общая идентичность и границы
 
