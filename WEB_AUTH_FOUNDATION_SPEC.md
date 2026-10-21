@@ -50,7 +50,7 @@ Argon2/hash verification откладывается до отдельного de
 
 | Таблица | Поля и ограничения проекта | Индексы/проверки |
 |---|---|---|
-| web_credentials | id PK; employee_id NOT NULL UNIQUE FK employees(id) ON DELETE RESTRICT; login_normalized NOT NULL UNIQUE; password_hash nullable лишь до активации; active CHECK 0/1; credential_version >=1; created_at/updated_at | Активная credential требует непустого password_hash; роль/Telegram ID здесь отсутствуют; нормализацию login согласовать до фиксации DDL |
+| web_credentials | id PK; employee_id NOT NULL UNIQUE FK employees(id) ON DELETE RESTRICT; login_normalized NOT NULL UNIQUE; password_hash nullable лишь до активации; active CHECK 0/1; credential_version >=1; created_at/updated_at | Допустимый обычный вход требует непустого password_hash и отсутствия reset_pending (либо эквивалентного запрета); active отдельно не отменяется; физическое хранение reset-состояния и нормализацию login согласовать до фиксации DDL; роль/Telegram ID здесь отсутствуют |
 | web_sessions | token_hash PK NOT NULL; credential_id FK RESTRICT; credential_version; issued_at; absolute_expires_at; last_visited_at; revoked_at nullable | credential_id, absolute_expires_at, last_visited_at; CHECK порядка времён и absolute_expires_at=issued_at+90 дней; отзыв/версия проверяются при использовании |
 | web_password_actions | id PK; token_hash UNIQUE NOT NULL; credential_id FK RESTRICT; purpose CHECK invitation/reset; issued_by FK employees RESTRICT; issued_at/expires_at; used_at/revoked_at | credential_id/purpose; expiry; не более одного непогашенного/неотозванного действия на credential+purpose (partial UNIQUE); reset TTL=30 минут; invitation TTL пока не задавать default |
 | web_login_attempts | id PK; login bucket; ограниченный идентификатор источника; occurred_at; outcome enum | bucket/time и source/time; никаких raw passwords/token/initData; состав источника/retention до production согласовать |
@@ -66,6 +66,32 @@ ID допустимо для web. Проверка manager/supervisor и employe
 policy внутри будущей транзакции операции, а не одноразовая проверка при login.
 Серверный протокол настоящего посещения ещё согласуется; foundation получает
 явный тип события и доказывает, что background-событие не изменяет last_visited.
+
+### 3.1. Проверяемый контракт сброса — уточнение 21.10.2026
+
+После подтверждения supervisor собственным паролем одна атомарная операция:
+инвалидирует старый пароль manager, переводит credential в reset_pending либо
+эквивалентное состояние запрета обычного входа, отзывает все web-сессии,
+аннулирует предыдущие неиспользованные коды и создаёт новый reset-код на 30 минут.
+Физическое решение (поле состояния, version/generation, инвалидирование hash
+или их сочетание) не утверждается этим ТЗ и подлежит review. Одного отзыва
+сессий недостаточно: повторный login старым паролем должен быть невозможен.
+
+До задания нового пароля по действующему коду обычный вход запрещён.
+Просроченный/использованный/отозванный код отклоняется; expiry не восстанавливает
+старый пароль. Менеджер сам выбирает новый постоянный пароль. Успешное погашение
+атомарно сохраняет его, помечает код использованным и снимает reset_pending.
+Отдельные inactive employee/credential и role restrictions не сбрасываются.
+Supervisor не получает пароль; аудит без кода/пароля. Telegram и бизнес-данные
+не меняются. При сбое любой атомарной операции — полный rollback без частичного
+успеха; код не выдаётся как действующий до commit.
+
+Гонка login/reset: выдача сессии должна повторно проверять актуальные состояние
+и version внутри согласованной транзакции. После commit reset нет действующих
+сессий со старым паролем, в том числе у login, начавшего проверку до reset.
+Если login успел завершиться первым, reset отзывает выданную сессию. Повторный
+reset и погашение кода также сериализуются: отозванный старый код не может
+позднее перезаписать новый пароль. Конкретный алгоритм блокировки требует review.
 
 ## 4. Изолированная миграция на синтетических БД
 
@@ -103,7 +129,15 @@ SCHEMA_VERSION=4 продолжает отвергать schema5, и соотв�
 | Manager свой/чужой, bot-admin, supervisor | Только своё / отказ; bot admin не supervisor; прежние права руководителя |
 | 90 дней от issued_at | До границы допустимо, на границе/после отказ; посещение/ротация не сдвигает исходную границу |
 | 30 дней без посещения | До границы допустимо, на границе отказ; foreground обновляет, background нет |
-| Reset/revoke/logout | Отозванная generation/session не принимается; reset одноразовый, граница 30 минут; supervisor-manager scope и reauth intent |
+| Reset/revoke/logout | Отозванная generation/session не принимается; supervisor-manager scope и reauth intent |
+| Reset сразу после commit | Старый пароль отклонён; все прежние web-сессии отозваны; reset_pending запрещает обычный login |
+| Ожидание нового пароля | До погашения действующего кода обычный вход запрещён; истечение кода не снимает запрет |
+| Reset-код: expiry/replay | На границе 30 минут и позже отказ; использованный код повторно не принимается |
+| Повторный reset | Старые неиспользованные коды отозваны; действует только новый код |
+| Параллельные login/reset | Обе последовательности и пауза после проверки старого пароля: после reset commit нет действующих старых сессий/новых входов |
+| Сбой reset/redeem до commit | Полный rollback состояния/пароля/сессий/кодов; частичный успех не возвращается |
+| Установка нового пароля | Действующий код погашен один раз; новый пароль позволяет login при прочих выполненных active/role условиях; старый не работает |
+| Изоляция reset | Telegram HMAC/ACL, employees/roles, планы, история, задачи и таймеры сохранены |
 | Synthetic 4→5 и повтор | Один набор таблиц/индексов/registry; повтор без изменений; integrity/FK OK |
 | Нарушения ограничений | Duplicate login/employee/token/action, orphan FK, неверные enum/времена отклонены |
 | Поддельная/неполная schema5 и неизвестная версия | Отказ без изменения файла/данных |
@@ -125,7 +159,11 @@ sqlite_master, чтобы новая сущность не выпала из п�
 Cookie/CSRF, закрытие настоящего браузера, реальная password verification,
 HTTP authorization и supervisor reauth нельзя считать проверенными pure-тестами:
 это критерии следующих session/API/browser PR. В foundation покрывается контракт
-policy, а не работоспособный вход. Не включать production auth ради этих тестов.
+policy, а не работоспособный вход. Reset-контракт проверяется моделями и
+синтетическими транзакционными сценариями без рабочего login и настоящих паролей.
+Фактический отказ password verifier и HTTP-гонки обязательны в последующих
+session/account API PR; pure-тесты не заменяют их. Не включать production auth
+ради этих тестов.
 
 ## 6. Отдельный план compatibility bridge
 
