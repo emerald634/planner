@@ -129,7 +129,9 @@ integrity и O_EXCL назначения сохранены; live database об�
 | Локально: ранний bridge-набор | 53 OK, 11.845 с |
 | Локально: полный Python-набор | 241 OK, 31.287 с, без skips/errors/failures |
 | Локально: legacy release tests | planner-only 2.1.1 и stage2 сохранены; bridge отличим отдельным ID/profile |
-| Локально: extracted synthetic package smoke | Bridge на 4/5 с backup, legacy package отвергает 5; никаких web/migration imports |
+| Локально: extracted synthetic package smoke | Bridge на 4/5 с backup; legacy package отвергает 5; нет policy/migration imports |
+| Локально: настоящий bridge-архив | Build, checker, production ASGI CRUD и backup/restore на 4/5 прошли; source SHA/SHA256 ниже |
+| Защищённые файлы | SHA256 9 прежних .env/баз/архивов не изменились, SQLite-файлы не открывались как рабочие БД |
 | Статически | Архивные SCHEMA, Docker COPY planner включает подпакет; новых deps/маршрутов/изменений HMAC нет |
 | Не выполнялись | Linux/WSL/Docker Engine, runtime Python 3.12, реальные WebView/CRM/VPS, OOM/load/power-loss |
 | Перед production | Review DDL и bridge; Linux/Python3.12/Docker/mount smoke, свежая сверка VPS, backup/restore trial и отдельное разрешение |
@@ -144,13 +146,35 @@ Runner запрещает внешний socket/DNS, рабочие .env и SQLi
 ## Локальный rollback-артефакт
 
 Профиль `--bridge`, identity `schema5-compat-v1`, release ID
-`planner-schema5-bridge-rc1-20261021`. Планируемый архив:
+`planner-schema5-bridge-rc1-20261021`. Архив:
 `deployment-artifacts/planner-schema5-bridge-rc1-20261021.tar.gz`.
 
 <!-- ARTIFACT_RESULT_START -->
-На момент исходного коммита архив ещё не собран: требуется чистый commit.
-После реальной сборки сюда будут добавлены source SHA, SHA256 и результат smoke.
-Не считать этот промежуточный статус готовым rollback-артефактом.
+**Архив действительно создан и проверен локально.**
+
+- Путь: `C:\Users\user\bitrix_missed_calls_bot\deployment-artifacts\planner-schema5-bridge-rc1-20261021.tar.gz`.
+- Source Git SHA: `3897534ad43c275f0e36235804f7f49063f5f71c` (чистый commit перед сборкой).
+- SHA256: `27847280da39c4e4da7be15a1ea4b1b87525fd62946e3cf8b2fff21926160bd6`.
+- Размер: 146451 байт; 39 файлов с release-files.json (38 хешируемых записей).
+- Рядом `.tar.gz.sha256` и `.tar.gz.files.txt`; полный состав в sidecar/внутреннем manifest.
+- Offline frozen install pnpm 11.25.0: OK; tsc/Vite 7.3.7 production build: OK,
+  31 module, три assets-файла, без функциональных изменений frontend.
+- После распаковки отдельный Python-процесс без PYTHONPATH репозитория проверил
+  самодостаточный runtime: checker, startup на 4 и 5, production static validation,
+  /healthz200, /api/me401 без HMAC, signed manager/me/plan/task/confirm/close/report,
+  отсутствие web routes, auth snapshot неизменен, backup/verify/restore на 4 и 5.
+  Ни migration.py, ни policy.py в процессе не импортировались.
+- Smoke выполнен локально на Windows/Python 3.14 с разрешением внутреннего
+  loopback socketpair: в sandbox дочерний asyncio Proactor зависал до startup
+  приложения (зафиксирован стек). Увеличением timeout или изменением backend
+  это не маскировали. Отдельное раннее ожидание 404 было уточнено: production
+  StaticFiles возвращает 405 на отсутствующий POST /api/web/auth/login, тогда
+  как app без статики даёт 404. Проверены именно отсутствие /api/web routes,
+  отказ cookie-only и отсутствие работающего login, а не один HTTP-код.
+- Этот архив не Docker image; Linux/Python3.12/mount smoke всё ещё не выполнен.
+
+Последующее уточнение отчёта — только Markdown, source SHA архива не подменяется
+новым HEAD. Рабочие исходники/зависимости из архива соответствуют его source commit.
 <!-- ARTIFACT_RESULT_END -->
 
 Профиль выполняет offline frozen install + pnpm run build без отключения security,

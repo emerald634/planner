@@ -1145,7 +1145,11 @@ inactive_or_missing_manager, initiator_not_bound, import_retry. Интерфей
 для `feature/schema5-compatibility`. Bridge — `schema5-compat-v1`, отдельный
 профиль/ID `planner-schema5-bridge-...`, не 2.1.1. Возможность открытия known5
 не означает миграцию production. Детали нового локального артефакта и SHA256
-фиксируются после сборки в SCHEMA5_COMPATIBILITY_REPORT.md. Все прежние архивы
+зафиксированы в SCHEMA5_COMPATIBILITY_REPORT.md: архив
+`deployment-artifacts/planner-schema5-bridge-rc1-20261021.tar.gz`, 146451 байт,
+39 файлов; SHA256 `27847280da39c4e4da7be15a1ea4b1b87525fd62946e3cf8b2fff21926160bd6`.
+Source SHA `3897534ad43c275f0e36235804f7f49063f5f71c`; финальные уточнения отчёта только Markdown,
+SHA архива не подменяется SHA документационного коммита. Все прежние архивы
 сохранены. Ни bridge, ни foundation не установлены на production.
 
 **Актуализация 21.10.2026:** PR №4 объединён владельцем:
@@ -2352,6 +2356,13 @@ Bridge, 21.10.2026: полный Python-набор **241 OK (31.287 с)**,
 на 5; snapshot всех пяти auth-таблиц сверяется после каждого такого теста.
 Ранний foundation-тест отказа 5 обновлён: bridge допускает known5, а отказ
 legacy-пакета проверен отдельно после распаковки. A11/бизнес-логика не менялись.
+Настоящий bridge-архив собран (offline frozen install/tsc/Vite OK) и отдельно
+распакован; child без PYTHONPATH репозитория проверил 4/5 startup, production
+static, ASGI Telegram CRUD/confirm/close/report, auth preservation и backup/restore.
+В sandbox child Proactor застревал на внутреннем loopback socketpair до backend;
+локальный smoke с разрешением socketpair прошёл. Web routes отсутствуют;
+POST неизвестного web-login даёт 405 от production StaticFiles (без статики404),
+cookie-only API остаётся 401. Не считать конкретный 404 обязательным auth-контрактом.
 Linux/Docker/WSL и реальный Python 3.12 недоступны; пакетный smoke — локальный
 Windows/Python 3.14. Статика пересобирается для пакета без функциональных изменений,
 browser-тесты не запускались. Никаких результатов production эти проверки не дают.
