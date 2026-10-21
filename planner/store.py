@@ -108,6 +108,16 @@ class Store:
             pass
         with self.connection(True) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
+            if version == 5:
+                try:
+                    from .schema5_compatibility import validate_schema5
+                except ModuleNotFoundError as error:
+                    # Legacy release profiles intentionally omit this capability.
+                    if error.name != __package__ + ".schema5_compatibility":
+                        raise
+                    raise RuntimeError("База планировщика создана более новой версией.") from None
+                validate_schema5(db)
+                return
             if version > SCHEMA_VERSION:
                 raise RuntimeError("База планировщика создана более новой версией.")
             if version == 0:

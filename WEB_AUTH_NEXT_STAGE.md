@@ -1,5 +1,18 @@
 # Следующий этап: утверждённая политика web-входа и план реализации
 
+Актуализация bridge 21.10.2026: PR №5 принят (`6501ef2`); отдельным заданием
+разрешён и реализован локальный schema5-compatibility. Store сохраняет цель
+миграций 4, но дополнительно открывает только известную 5 после строгой read-only
+проверки структуры/registry/checksum/FK/integrity. На 4 не создаёт auth-таблицы.
+На 5 не вызывает migration, не ремонтирует и не меняет auth-данные. Backup API
+поддерживает известную 5. Отдельный профиль --bridge включает только нужные
+schema/validation, без policy/password/migration. Профили legacy не получают
+bridge capability. Реальные web routes, cookie login и account-admin отсутствуют.
+Отчёт: SCHEMA5_COMPATIBILITY_REPORT.md; упаковка: SCHEMA5_BRIDGE_RELEASE.md.
+Физический DDL не утверждён для production; Linux/Docker smoke и отдельное
+разрешение на установку/миграцию остаются обязательны. История foundation ниже
+описывает прежний этап и не заменяет эти новые результаты.
+
 Дата: 21.10.2026. Политика принята через PR №4, merge
 `50ec7e8b909a6a5522a80eba08f8f31e3ce39c1b`. Последующим заданием разрешён
 только локальный foundation в `feature/web-auth-foundation`. Он реализует

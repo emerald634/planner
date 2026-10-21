@@ -680,6 +680,15 @@ Read-only queue mount защищает запись со стороны Mini App
 
 ## 13. Карта исходников и ответственность
 
+Актуализация bridge, 21.10.2026: PR №5 принят (merge `6501ef2`); текущая ветка
+`feature/schema5-compatibility`. Новые `planner/schema5_compatibility.py` и
+`planner/web_auth/validation.py` обеспечивают строго read-only проверку известной 5.
+Store.initialize и backup.validate вызывают её только для version5. Из migration.py
+вынесен валидатор, прежний import MigrationError сохранён. Модели/policy не подключены.
+Release tooling получил отдельный --bridge; guide SCHEMA5_BRIDGE_RELEASE.md,
+отчёт SCHEMA5_COMPATIBILITY_REPORT.md; новые tests/test_schema5_compatibility.py
+и tests/test_schema5_release.py повторяют прежние сценарии на 5 и проверяют упаковку.
+
 Принято владельцем 21.10.2026: PR №2 (release tooling, тесты и инструкция) и
 PR №3 (`miniapp/desktop/`, документация и команды) объединены в main. Карта
 ниже сохранена. Утверждённые правила — `WEB_AUTH_NEXT_STAGE.md`, архитектура —
@@ -738,6 +747,12 @@ planner-only профиль, release ID/Git SHA и проверку архива
 
 ## 14. SQLite: схемы, связи, версии и транзакции
 
+Bridge сохраняет SCHEMA_VERSION=4 как цель бизнес-миграций. Дополнительно
+открывает только точную foundation schema5: те же бизнес-таблицы плюс пять auth-
+таблиц/индексы и registry5 с известным checksum. Данные auth при startup, CRUD,
+импорте и backup не меняются. Это поддержка конкретного проекта DDL, не любой 5.
+Физический DDL по-прежнему не утверждён для production. Очередь остаётся schema1.
+
 **access.db**: allowed_users(telegram_id PK, created_at, added_by),
 reminders(chat_id, thread_id PK, enabled_by, enabled, last_attempt_date).
 AccessStore.initialize создаёт отсутствующие таблицы и INSERT OR IGNORE seed.
@@ -776,6 +791,17 @@ commit в DELETE journal. A15 — риск конкуренции, не восп
 
 ## 15. Миграции, сохранность и безопасное восстановление
 
+Изменение bridge от 21.10.2026: на 4 старые миграции 0→1→2→3→4 сохранены;
+новых auth-таблиц/registry5/startup migration нет. На 5 — проверка и return из
+initialize, без migrate_synthetic, ремонта, снижения версии и auth-мутаций.
+Backup API сохраняет поддержку 1–4 и дополнительно строго проверяет известную 5.
+Backup/verify/restore не мигрируют; restore только в новый файл. На synthetic 5
+проверены живое соединение/конкурентные записи, Backup API, checksum, restore,
+повторные CRUD и сохранение auth. Новая 5 для future rollback остаётся актуальной,
+не заменяется старой 4-копией. Поддерживаемые synthetic пути 0/1/2/3 дали тот же
+SQL manifest schema4; в 7 локальных архивах исходников начальный SCHEMA совпал.
+Чужие SQL-варианты не допущены молча; Linux/SQLite-version варианты ещё требуют smoke.
+
 Store.initialize выполняет автоматическую миграцию при lifespan старте, поэтому
 запуск API с рабочим путём БД — уже потенциальная запись, не read-only диагностика.
 
@@ -786,7 +812,10 @@ Store.initialize выполняет автоматическую миграци�
 - 2→3: task.creation_actor defaultemployee, distributions/tasks/leads и system_audit.
 - 3→4: import_attempts и запись миграции. Уже имеющиеся сотрудники/роли/планы/
   задачи/факт/таймеры/согласования/аудит/отчёты не переписываются.
-- Более новая version>4 отвергается. Повторный initialize не создаёт дубли.
+- Исторический Store 2.1.1 отвергал version>4. Bridge допускает исключительно
+  известную schema5 после полной проверки структуры/реестра/checksum/integrity/FK;
+  schema6 и повреждённая 5 отвергаются. Повторный startup — без изменения данных.
+  В legacy-пакетах bridge capability отсутствует и version>4 всё ещё запрещена.
 
 Все шаги текущего initialize находятся в одной write-транзакции. Отчёты 13.10
 содержат проверки отката при внедрённом сбое и сохранения всех прежних колонок
@@ -1110,6 +1139,18 @@ inactive_or_missing_manager, initiator_not_bound, import_retry. Интерфей
 разрешения review и автоматическое применение после реактивации пока отсутствуют.
 
 ## 23. Версии, артефакты и установленное состояние
+
+Последующий этап 21.10.2026: PR №5 Merged, merge
+`6501ef264e17f8a8c2ff166515a014c7c843b47c`; это проверенная исходная main
+для `feature/schema5-compatibility`. Bridge — `schema5-compat-v1`, отдельный
+профиль/ID `planner-schema5-bridge-...`, не 2.1.1. Возможность открытия known5
+не означает миграцию production. Детали нового локального артефакта и SHA256
+зафиксированы в SCHEMA5_COMPATIBILITY_REPORT.md: архив
+`deployment-artifacts/planner-schema5-bridge-rc1-20261021.tar.gz`, 146451 байт,
+39 файлов; SHA256 `27847280da39c4e4da7be15a1ea4b1b87525fd62946e3cf8b2fff21926160bd6`.
+Source SHA `3897534ad43c275f0e36235804f7f49063f5f71c`; финальные уточнения отчёта только Markdown,
+SHA архива не подменяется SHA документационного коммита. Все прежние архивы
+сохранены. Ни bridge, ни foundation не установлены на production.
 
 **Актуализация 21.10.2026:** PR №4 объединён владельцем:
 https://github.com/emerald634/planner/pull/4, merge
@@ -2039,6 +2080,12 @@ CRM задачи, лиды, действия и подпункты. Заверш
 
 ## 30. Параллельная desktop-web версия для Windows и macOS
 
+Foundation принят в Git через PR №5 (`6501ef2`). Последующее задание разрешило
+локальный bridge: он не включает web-auth даже при заполненных auth-таблицах.
+Telegram API по-прежнему требует HMAC/ACL; cookie не принимается как замена.
+Web routes/account-admin/password verifier отсутствуют. После перехода на
+известную 5 bridge сохраняет auth-таблицы неизменными для будущего возврата.
+
 Решение владельца 21.10.2026: PR №3 принят и объединён в main. Тёмная
 карточная концепция, структура экранов manager/supervisor утверждены. Реализован
 только локальный визуальный прототип. Рабочий web-вход, серверные сессии,
@@ -2129,6 +2176,12 @@ revocation, cookie/CSRF policy, rate limiting, supervisor account-admin API,
 параллельную разработку разрешением сейчас менять код или production.
 
 ## 31. Утверждённое, но ещё не реализованное
+
+Изменение границ после foundation: compatibility реализован локально и ждёт
+review в отдельном PR. Поэтому текущий Store уже открывает известную schema5,
+хотя рабочая миграционная SCHEMA_VERSION=4 остаётся. Упоминания прежнего отказа
+любой schema>4 ниже относятся к foundation/исходному 2.1.1, не bridge. Автовызова
+миграции, web-входа и production-действий по-прежнему нет.
 
 После принятия двух PR 21.10 подготовка 2.1.1 и локальный desktop shell
 завершены и приняты в Git. Перечисленные ниже реальные интеграции и web-
@@ -2291,6 +2344,29 @@ readonlyCRM, чужие контейнеры/Nginx, системный swap и �
 
 ## 36. Тестирование, доступные проверки и критерии приёмки
 
+Bridge, 21.10.2026: полный Python-набор **241 OK (31.287 с)**,
+0 skips/errors/failures; прежние 188 +53 bridge. Отдельный ранний bridge-прогон
+53 OK (11.845 с), финальный полный прогон включает guide/profile изменения.
+Команды: `.venv/Scripts/python.exe -B -m tests.run_foundation_checks --bridge`
+и без --bridge для всех тестов. Список новых test IDs и раздельные категории
+«локально/статически/не выполнялось/до production» — в SCHEMA5_COMPATIBILITY_REPORT.md.
+Новый bridge-тест проверяет текущую 5 с новыми планами/фактом/таймером/целями/
+закрытым отчётом, возвращение Store без старого backup, auth preservation и
+конкурентный Backup API/restore. Старые сценарии API/ролей/целей/импорта повторены
+на 5; snapshot всех пяти auth-таблиц сверяется после каждого такого теста.
+Ранний foundation-тест отказа 5 обновлён: bridge допускает known5, а отказ
+legacy-пакета проверен отдельно после распаковки. A11/бизнес-логика не менялись.
+Настоящий bridge-архив собран (offline frozen install/tsc/Vite OK) и отдельно
+распакован; child без PYTHONPATH репозитория проверил 4/5 startup, production
+static, ASGI Telegram CRUD/confirm/close/report, auth preservation и backup/restore.
+В sandbox child Proactor застревал на внутреннем loopback socketpair до backend;
+локальный smoke с разрешением socketpair прошёл. Web routes отсутствуют;
+POST неизвестного web-login даёт 405 от production StaticFiles (без статики404),
+cookie-only API остаётся 401. Не считать конкретный 404 обязательным auth-контрактом.
+Linux/Docker/WSL и реальный Python 3.12 недоступны; пакетный smoke — локальный
+Windows/Python 3.14. Статика пересобирается для пакета без функциональных изменений,
+browser-тесты не запускались. Никаких результатов production эти проверки не дают.
+
 **Последующий программный foundation, 21.10.2026:** 35 новых тестов OK (1.835 с),
 полный набор 188 OK (21.733 с), пропусков/ошибок нет: прежние 153 + новые 35.
 Команда: `.venv/Scripts/python.exe -B -m tests.run_foundation_checks`.
@@ -2390,6 +2466,15 @@ web-сборке. Сохранены 6 скриншотов (1366×768, 1440×90
 
 ## 37. Безопасный выпуск, резервирование и откат: рабочий порядок
 
+Bridge реализован как локальный rollback-кандидат. В репозитории и --bridge
+пакете есть capability schema5_compatibility и лишь schema/validation подпакета;
+в legacy профилях 2.1.1/stage2 capability и web_auth не пакуются. Это сохраняет
+их прежний отказ schema>4 и не маскирует bridge идентичностью 2.1.1. Runtime
+API/store/schema gate проверяется после распаковки на synthetic 4/5.
+Перед любым production переходом всё ещё обязательны отдельное принятие DDL,
+Linux/Python 3.12/Docker/mount smoke, свежая сверка VPS, backup/restore trial и
+разрешение. Локальный архив не является установленным или проверенным Linux-образом.
+
 Слияния PR №2/№3 выполнены только в Git. Установку 2.1.1 и web владелец
 не разрешал. До неё нужны отдельное разрешение, свежая проверка нового VPS,
 резервирование и откат. Текущая schema4 не менялась; возможная schema5 пока
@@ -2401,15 +2486,15 @@ SCHEMA_VERSION и Store.initialize) и не является rollback image дл
 роли/планы/задачи/таймеры/история без переписывания; транзакционная миграция.
 Сначала отдельно создать и проверить backend bridge для schema4+schema5,
 не меняющий schema4 при запуске. Основной откат — этот совместимый backend
-с актуальной БД. Реализация bridge ещё отсутствует. Только после его приёмки,
+с актуальной БД. Bridge теперь реализован локально; только после его приёмки,
 backup/restore trial и отдельного разрешения возможна production-миграция.
 Возврат старой копии не основной откат: новые записи могут выпасть из активной
 БД; сохранить текущую БД/очередь и согласовать восстановление/сверку.
 Подробности — `WEB_AUTH_NEXT_STAGE.md` и `WEB_AUTH_FOUNDATION_SPEC.md`. Сейчас
 разрешённый foundation выполнен локально; миграционные тесты использовали лишь
-synthetic SQLite, не рабочие файлы или их копии. Bridge, backup/restore на
-schema5, Linux mounts и production migration остаются следующими этапами,
-не доказанными foundation. Серверных миграций здесь нет.
+synthetic SQLite, не рабочие файлы или их копии. Bridge и backup/restore на schema5 теперь проверены локально отдельно;
+Linux mounts и production migration по-прежнему не выполнены. Сам foundation
+этих результатов не доказывал. Серверных миграций здесь нет.
 Уточнение владельца 21.10.2026: приложения перенесены администратором на новый
 сервер 20.10, старый удалён. Исторические пути/ресурсы ниже нельзя считать
 проверенными для нового сервера. До установки нужны свежая read-only сверка и
@@ -2507,6 +2592,13 @@ permissions, новая rollback копия несекретного env, ста
 после отката. Не удалять неудачную БД/старый release для экономии места.
 
 ## 38. Правила дальнейшей работы и актуализации этой базы
+
+Последующее решение владельца: PR №5 принят (`6501ef2`) и отдельно разрешён
+локальный schema5-compatibility. Он реализован без auth endpoints и production.
+После создания отдельного PR остановиться и ждать review; автоматических merge,
+установки, миграции VPS или перехода к session API нет. История порядка ниже
+сохранена; шаг foundation review уже завершён. Отчёт и следующий порядок —
+SCHEMA5_COMPATIBILITY_REPORT.md, физический DDL всё ещё review-only.
 
 Завершённое решение 21.10.2026: владелец разрешил объединить PR №2 и №3,
 оба Merged. PR №3 синхронизирован с новой main обычным merge `5a2d969`, без

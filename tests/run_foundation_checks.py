@@ -53,7 +53,11 @@ def main():
             raise PermissionError("External test DNS is disabled")
 
     sys.addaudithook(safety)
-    if "--new" in sys.argv:
+    if "--bridge" in sys.argv:
+        suite = unittest.defaultTestLoader.loadTestsFromNames([
+            "tests.test_schema5_compatibility", "tests.test_schema5_release"])
+        label = "bridge"
+    elif "--new" in sys.argv:
         suite = unittest.defaultTestLoader.loadTestsFromNames([
             "tests.test_web_auth_foundation", "tests.test_web_auth_schema", "tests.test_web_auth_migration"])
         label = "new"
