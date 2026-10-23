@@ -1,5 +1,14 @@
 # Основная база знаний проекта «План дня» / @nedozvons_bot
 
+> **Решение владельца от 23.10.2026:** целевой продукт — одно приложение LeadFlow +
+> «План дня», PostgreSQL и единый web-login на основе существующей авторизации
+> LeadFlow. Отдельный SQLite web-auth Planner больше не является production-путём.
+> Требования 90/30 дней, атомарного reset30min, независимости Telegram/web и
+> сохранности данных не отменены. Актуальный план: UNIFIED_AUTH_INTEGRATION.md.
+> SQLite foundation сохраняется как историческая основа тестов. PR №6 открыт и
+> не объединён; его необходимость перед PG решается отдельно. Старые формулировки
+> про будущую SQLite web-auth ниже — история, а не параллельное разрешение её внедрять.
+
 Срез источников: 15 октября 2026 года, Europe/Moscow. Документ составлен по
 экспорту переписок, локальным исходникам и отчётам; production повторно не проверяется.
 
@@ -680,6 +689,15 @@ Read-only queue mount защищает запись со стороны Mini App
 
 ## 13. Карта исходников и ответственность
 
+23.10.2026: UNIFIED_AUTH_INTEGRATION.md — актуальная архитектура PostgreSQL/
+LeadFlow auth, matrix/crosswalk/security/cutover. UNIFIED_AUTH_TEST_REPORT.md —
+фактические проверки; review/leadflow-unified-auth-poc.patch — добавочный local-only
+PoC к LeadFlow d3e461f (не auth-копия в Planner). В Planner добавлен только
+тест tests/test_unified_auth_boundary.py; действующие Python API/HMAC/ACL/Store
+не менялись. Код PoC лежит в отдельной копии LeadFlow, не импортируется Planner.
+В ней изменены лишь backend/poc/{__init__,unified_auth,run_checks}.py и новый test.
+Default LeadFlow app.main/router, auth/security/models/ORM/migrations не менялись.
+
 Принято владельцем 21.10.2026: PR №2 (release tooling, тесты и инструкция) и
 PR №3 (`miniapp/desktop/`, документация и команды) объединены в main. Карта
 ниже сохранена. Утверждённые правила — `WEB_AUTH_NEXT_STAGE.md`, архитектура —
@@ -738,6 +756,12 @@ planner-only профиль, release ID/Git SHA и проверку архива
 
 ## 14. SQLite: схемы, связи, версии и транзакции
 
+Новое целевое решение 23.10.2026 — PostgreSQL LeadFlow с каноническими users,
+одной системой web credentials/sessions. Никакой миграции здесь не выполняли;
+текущая SQLite Planner/очередь и принятый foundation неизменны. Таблицы web_auth
+schema5 ниже — исторический проект, не второе целевое password-хранилище.
+Нельзя считать users.id равным employees.id; нужен явный reviewed crosswalk.
+
 **access.db**: allowed_users(telegram_id PK, created_at, added_by),
 reminders(chat_id, thread_id PK, enabled_by, enabled, last_attempt_date).
 AccessStore.initialize создаёт отсутствующие таблицы и INSERT OR IGNORE seed.
@@ -776,6 +800,13 @@ commit в DELETE journal. A15 — риск конкуренции, не восп
 
 ## 15. Миграции, сохранность и безопасное восстановление
 
+Путь SQLite→PostgreSQL только спроектирован. Рабочие БД/их копии не читались,
+в тестах — искусственные in-memory fixtures. Будущий перенос сохраняет исходные
+IDs/namespaces, FK, immutable reports/history, timer/import provenance; после
+PG-записей нельзя считать старую SQLite-копию откатом без потери новых данных.
+Нужны отдельные PG migration/backup/restore/concurrency и auth-compatible rollback.
+PR №6 остаётся отдельным SQLite rollback-кандидатом, не prerequisite по умолчанию.
+
 Store.initialize выполняет автоматическую миграцию при lifespan старте, поэтому
 запуск API с рабочим путём БД — уже потенциальная запись, не read-only диагностика.
 
@@ -812,6 +843,14 @@ planner.db либо confirmations.db в существующем новом ка
 перенос новых результатов. Обещание «без потери данных одной командой» неверно.
 
 ## 16. Сотрудники, полномочия и безопасность
+
+Identity 23.10.2026: web-каноника в будущем users LeadFlow, роль/active из БД;
+manager своё, supervisor прежние Planner полномочия. Admin LeadFlow не получает
+planner-supervisor автоматически; бот-admin не становится web-admin/supervisor.
+Конкретные admin grants/role-assignment/команды требуют решения. Текущий admin
+LeadFlow может менять users.role (включая свой) — это учитывать до бизнес-integration.
+Telegram chat ID LeadFlow — адрес уведомления, не доказанный Telegram user ID.
+Реальные users.id/email неизвестны; mapping по именам/равным PK запрещён.
 
 | Лицо | Telegram ID | BitrixID | Mini App | Особые права / статус |
 |---|---|---|---|---|
@@ -1110,6 +1149,16 @@ inactive_or_missing_manager, initiator_not_bound, import_retry. Интерфей
 разрешения review и автоматическое применение после реактивации пока отсутствуют.
 
 ## 23. Версии, артефакты и установленное состояние
+
+23.10.2026 сверены удалённые HEAD: Planner main
+6501ef264e17f8a8c2ff166515a014c7c843b47c; LeadFlow master
+d3e461f89532b997e8f236ae77f1fd15ed5515c9. PR №6 открыт, HEAD
+7cc780818a71b22b19d5db1cab7d6e697839aa41; не объединён/не закрыт/не удалён.
+Ветка Planner docs/unified-auth-integration основана на main, а не PR №6.
+Локальная копия LeadFlow: C:\Users\user\Documents\ChatGPT\План дня\lead-flow-auth-poc,
+ветка feature/unified-auth-poc, local commit 837fbbfdb5d058fa4a9c15d20723cbcd03f969ef.
+Никакого push/PR в LeadFlow нет; remote master и Planner main не менялись.
+Production версия этим не подтверждается и не меняется; сервер не проверялся.
 
 **Актуализация 21.10.2026:** PR №4 объединён владельцем:
 https://github.com/emerald634/planner/pull/4, merge
@@ -2039,6 +2088,14 @@ CRM задачи, лиды, действия и подпункты. Заверш
 
 ## 30. Параллельная desktop-web версия для Windows и macOS
 
+Направление заменено 23.10.2026: один frontend/AuthProvider LeadFlow и один
+backend/auth boundary, PostgreSQL. Локально доказан только общий cookie login
+для прежнего LeadFlow API и GET диагностической identity/role. Второго web-login,
+Planner password DB, копирования JWT_SECRET в сервисы нет. UI/бизнес-API/данные
+ещё не объединены. Рабочий Telegram Mini App сохраняет отдельный HMAC/ACL.
+Связанные правила 90 дней от входа/30 дней без посещений и атомарного reset
+с кодом 30 минут сохранены; JWT480 LeadFlow не заменяет их. SQLite-pлан ниже — история.
+
 Решение владельца 21.10.2026: PR №3 принят и объединён в main. Тёмная
 карточная концепция, структура экранов manager/supervisor утверждены. Реализован
 только локальный визуальный прототип. Рабочий web-вход, серверные сессии,
@@ -2129,6 +2186,13 @@ revocation, cookie/CSRF policy, rate limiting, supervisor account-admin API,
 параллельную разработку разрешением сейчас менять код или production.
 
 ## 31. Утверждённое, но ещё не реализованное
+
+Реально выполнен лишь local-only identity PoC в LeadFlow плюс архитектурная
+сверка; не выполнены общие server sessions90/30, revoke/logout/reset_pending,
+CSRF/visit, crosswalk рабочих сотрудников, PG migration/data/business API и общий UI.
+Админским прямым PATCH password нельзя будет обходить будущий reset/revoke.
+Раньше предложенный самостоятельный SQLite web-auth Planner заменён единым
+LeadFlow/PostgreSQL направлением; foundation не удалён и не активирован.
 
 После принятия двух PR 21.10 подготовка 2.1.1 и локальный desktop shell
 завершены и приняты в Git. Перечисленные ниже реальные интеграции и web-
@@ -2291,6 +2355,20 @@ readonlyCRM, чужие контейнеры/Nginx, системный swap и �
 
 ## 36. Тестирование, доступные проверки и критерии приёмки
 
+Проверки 23.10.2026: Planner 190 OK (32.776 с) =188 прежних +2 новых cookie/HMAC
+boundary checks. LeadFlow backend 28 passed (pytest12.32 с; safe runner14.65 с),
+из них14 прежних и14 PoC cases; ruff по всему backend OK. Frontend LeadFlow:
+19 tests passed, ESLint и tsc/Vite production build OK. Никакого frontend source
+изменения; два tracked tsbuildinfo, созданные build, возвращены к исходному master.
+Backend тесты использовали original pwdlib/JWT/DB dependency и synthetic SQLite
+:memory:, не PostgreSQL. Общего PG, Linux/Docker, реального HTTPS/браузерного
+единого UI или server revoke эта проверка не доказывает. PoC фиксирует inherited
+replay JWT после logout как известное ограничение, а не реализованный revoke.
+Npm audit по неизменному lockfile:7 packages (5 high,2 moderate), не исправлялись.
+Ранние sandbox прогоны зависли на Windows loopback/Temp rename до тестов;
+итоговые проверки прошли с разрешённым local loopback/отдельным TEMP, не изменением app.
+Подробные test IDs/команды/версии/ограничения — UNIFIED_AUTH_TEST_REPORT.md.
+
 **Последующий программный foundation, 21.10.2026:** 35 новых тестов OK (1.835 с),
 полный набор 188 OK (21.733 с), пропусков/ошибок нет: прежние 153 + новые 35.
 Команда: `.venv/Scripts/python.exe -B -m tests.run_foundation_checks`.
@@ -2389,6 +2467,14 @@ web-сборке. Сохранены 6 скриншотов (1366×768, 1440×90
 проверка ещё не реализованной серверной password/session авторизации.
 
 ## 37. Безопасный выпуск, резервирование и откат: рабочий порядок
+
+Для нового PG пути SQLite bridge PR №6 не объединяется автоматически.
+Текущий PoC не имеет DB-migration/cutover: откат — убрать local factory/routes,
+старые исходники/БД неизменны. Будущие PG auth state/sessions требуют совместимого
+rollback, иначе старый JWT-only binary может обходить reset/revocation. Данные,
+появившиеся после PG cutover, сохраняют в актуальной PG; слепой возврат старой
+SQLite-копии запрещён. Свежие backups/restore trials/cutover writer checkpoint и
+отдельное разрешение на production обязательны. Действий с сервером нет.
 
 Слияния PR №2/№3 выполнены только в Git. Установку 2.1.1 и web владелец
 не разрешал. До неё нужны отдельное разрешение, свежая проверка нового VPS,
@@ -2507,6 +2593,16 @@ permissions, новая rollback копия несекретного env, ста
 после отката. Не удалять неудачную БД/старый release для экономии места.
 
 ## 38. Правила дальнейшей работы и актуализации этой базы
+
+Решение владельца 23.10.2026 имеет приоритет: один LeadFlow/PostgreSQL web-auth,
+а не следующий независимый SQLite login/session PR Planner. Сохраняются 90/30,
+reset30min/немедленный запрет старого пароля, Telegram HMAC/ACL и исходные данные.
+Работа текущего этапа заканчивается на архитектуре/локальном identity PoC.
+Публикация изменений/PR в LeadFlow только после отдельного допуска владельца
+репозитория; local feature допустима, master/deploy workflow не трогать.
+Наш PR — docs + regression evidence/review patch, без merge. PR №6 сохраняется
+открытым; вопрос его применения отдельно. Не переходить к PG/session/business
+реализации или production без следующего решения.
 
 Завершённое решение 21.10.2026: владелец разрешил объединить PR №2 и №3,
 оба Merged. PR №3 синхронизирован с новой main обычным merge `5a2d969`, без

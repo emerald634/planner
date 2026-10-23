@@ -1,0 +1,309 @@
+diff --git a/backend/poc/__init__.py b/backend/poc/__init__.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2c1d99e8c25a7dbdbebd4cea6c2698ac0b05c311
+--- /dev/null
++++ b/backend/poc/__init__.py
+@@ -0,0 +1 @@
++"""Local proof only. Not imported by app.main, installed app packages or Docker."""
+diff --git a/backend/poc/run_checks.py b/backend/poc/run_checks.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d25b038a4118ed81a3774d58fc01ea4b35d38d68
+--- /dev/null
++++ b/backend/poc/run_checks.py
+@@ -0,0 +1,79 @@
++"""Safe local pytest: no real config/DBs, no external network, existing tests unchanged."""
++
++import json
++import os
++import secrets
++import sys
++import tempfile
++import time
++from pathlib import Path
++
++
++def main() -> int:
++    backend = Path(__file__).resolve().parents[1]
++    scratch = backend.parents[1] / "unified-auth-checks"
++    scratch.mkdir(exist_ok=True)
++    os.environ["TEMP"] = os.environ["TMP"] = str(scratch)
++    tempfile.tempdir = str(scratch)
++    for name in tuple(os.environ):
++        if any(
++            part in name.upper()
++            for part in ("TOKEN", "PASSWORD", "SECRET", "WEBHOOK", "DATABASE_URL")
++        ):
++            os.environ.pop(name, None)
++    os.environ.update(
++        DATABASE_URL="sqlite://",
++        JWT_SECRET=secrets.token_urlsafe(48),
++        FIRST_ADMIN_PASSWORD="synthetic-bootstrap-not-used",
++        COOKIE_SECURE="false",
++        TELEGRAM_BOT_TOKEN="",
++        BITRIX24_WEBHOOK_URL="",
++        PYTHONDONTWRITEBYTECODE="1",
++    )
++    os.chdir(backend)
++
++    def guard(event, args):
++        if event == "sqlite3.connect" and args[0] != ":memory:":
++            raise PermissionError("Only synthetic in-memory SQLite is allowed")
++        if event == "open" and isinstance(args[0], (str, bytes, os.PathLike)):
++            name = Path(os.fsdecode(args[0])).name
++            if name == ".env" or name.endswith(".env"):
++                raise PermissionError("Do not read environment files in tests")
++        if event == "socket.connect":
++            address = args[1]
++            if not isinstance(address, tuple) or address[0] not in ("127.0.0.1", "::1"):
++                raise PermissionError("External networking is disabled")
++        if event == "socket.getaddrinfo" and args[0] not in (None, "localhost", "127.0.0.1", "::1"):
++            raise PermissionError("External DNS is disabled")
++
++    sys.addaudithook(guard)
++    import pytest
++
++    class Results:
++        def __init__(self):
++            self.tests = []
++
++        def pytest_runtest_logreport(self, report):
++            if report.when == "call" or report.failed:
++                self.tests.append(
++                    {"id": report.nodeid, "phase": report.when, "outcome": report.outcome}
++                )
++
++    plugin = Results()
++    started = time.monotonic()
++    code = pytest.main(["-q", "-p", "no:cacheprovider", *sys.argv[1:]], plugins=[plugin])
++    report = {
++        "exit_code": int(code),
++        "seconds": round(time.monotonic() - started, 3),
++        "tests": plugin.tests,
++        "sqlite_only": True,
++        "postgresql_tested": False,
++    }
++    (scratch / "leadflow-pytest-results.json").write_text(
++        json.dumps(report, indent=2), encoding="utf-8"
++    )
++    return int(code)
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/backend/poc/unified_auth.py b/backend/poc/unified_auth.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1871f36c1a8802ff1bf46d9858ffa4bc27091c2
+--- /dev/null
++++ b/backend/poc/unified_auth.py
+@@ -0,0 +1,38 @@
++"""Local identity proof using the ORIGINAL LeadFlow auth boundary.
++
++No second password/token/session implementation. No planner DB or business API.
++This factory is never registered by app.main or the existing deployment entrypoint.
++"""
++
++from fastapi import APIRouter, Depends, FastAPI
++from pydantic import BaseModel
++
++from app.api.dependencies import get_current_user, require_roles
++from app.api.router import api_router
++from app.core.config import settings
++from app.models.user import User, UserRole
++
++
++class IdentityRead(BaseModel):
++    canonical_user_id: int
++    current_role: UserRole
++
++
++def create_poc_app() -> FastAPI:
++    app = FastAPI(title="LOCAL ONLY: shared identity proof", docs_url=None, redoc_url=None)
++    app.include_router(api_router, prefix=settings.api_prefix)
++    router = APIRouter()
++
++    @router.get("/identity", response_model=IdentityRead)
++    def identity(user: User = Depends(get_current_user)) -> IdentityRead:
++        return IdentityRead(canonical_user_id=user.id, current_role=user.role)
++
++    @router.get("/supervisor-check", response_model=IdentityRead)
++    def supervisor_identity(
++        user: User = Depends(require_roles(UserRole.SUPERVISOR)),
++    ) -> IdentityRead:
++        # admin does not imply planner-supervisor; this is NOT a business grant.
++        return IdentityRead(canonical_user_id=user.id, current_role=user.role)
++
++    app.include_router(router, prefix=settings.api_prefix + "/planner-poc")
++    return app
+diff --git a/backend/tests/test_unified_auth_poc.py b/backend/tests/test_unified_auth_poc.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..96fdaec141b538f48670dd510383633a8e3e50e1
+--- /dev/null
++++ b/backend/tests/test_unified_auth_poc.py
+@@ -0,0 +1,167 @@
++"""Synthetic users, original pwdlib verifier/JWT/cookie and dependency; no planner DB."""
++
++from datetime import UTC, datetime, timedelta
++
++import jwt
++import pytest
++from fastapi.testclient import TestClient
++from sqlalchemy import select
++from sqlalchemy.orm import Session
++
++from app.core.config import settings
++from app.core.security import hash_password
++from app.db.session import get_db
++from app.main import app as production_app
++from app.models.user import User, UserRole
++from poc.unified_auth import create_poc_app
++from tests.conftest import override_db
++
++PASSWORD = "password123"  # Existing synthetic conftest credential, never a real account.
++MANAGER = "manager@testing.example.com"
++
++
++@pytest.fixture
++def poc_client(monkeypatch):
++    # Test real Secure-cookie transport over a synthetic HTTPS origin.
++    monkeypatch.setattr(settings, "cookie_secure", True)
++    app = create_poc_app()
++    app.dependency_overrides[get_db] = override_db
++    with TestClient(app, base_url="https://poc.invalid") as client:
++        yield client
++
++
++def login(client, email=MANAGER, password=PASSWORD):
++    return client.post("/api/v1/auth/login", json={"email": email, "password": password})
++
++
++def test_one_original_login_unlocks_leadflow_and_planner_identity(poc_client, db: Session):
++    user = db.scalar(select(User).where(User.email == MANAGER))
++    response = login(poc_client)
++    assert response.status_code == 200
++    assert "httponly" in response.headers["set-cookie"].lower()
++    assert "secure" in response.headers["set-cookie"].lower()
++    cookie = poc_client.cookies.get("access_token")
++    assert cookie
++    assert poc_client.get("/api/v1/auth/me").json()["id"] == user.id
++    proof = poc_client.get("/api/v1/planner-poc/identity")
++    assert proof.status_code == 200
++    assert proof.json() == {"canonical_user_id": user.id, "current_role": "manager"}
++    assert poc_client.cookies.get("access_token") == cookie
++    assert set(response.json()).isdisjoint({"password", "hashed_password", "access_token"})
++
++
++@pytest.mark.parametrize(
++    "email,password", [(MANAGER, "not-the-password"), ("unknown@testing.example.com", PASSWORD)]
++)
++def test_wrong_or_unknown_login_never_gets_cookie_or_probe(poc_client, email, password):
++    response = login(poc_client, email, password)
++    assert response.status_code == 401
++    assert not poc_client.cookies.get("access_token")
++    assert poc_client.get("/api/v1/planner-poc/identity").status_code == 401
++
++
++def test_inactive_at_login_and_disabled_after_login_deny_both_modules(poc_client, db):
++    assert login(poc_client).status_code == 200
++    user = db.scalar(select(User).where(User.email == MANAGER))
++    user.is_active = False
++    db.commit()
++    assert poc_client.get("/api/v1/auth/me").status_code == 401
++    assert poc_client.get("/api/v1/planner-poc/identity").status_code == 401
++    poc_client.cookies.clear()
++    assert login(poc_client).status_code == 401
++    assert not poc_client.cookies.get("access_token")
++
++
++@pytest.mark.parametrize("token", ["forged.invalid.token", "expired"])
++def test_forged_or_expired_token_is_rejected(poc_client, db, token):
++    if token == "expired":
++        user = db.scalar(select(User).where(User.email == MANAGER))
++        token = jwt.encode(
++            {"sub": str(user.id), "exp": datetime.now(UTC) - timedelta(seconds=1)},
++            settings.jwt_secret,
++            algorithm=settings.jwt_algorithm,
++        )
++    poc_client.cookies.set("access_token", token)
++    assert poc_client.get("/api/v1/auth/me").status_code == 401
++    assert poc_client.get("/api/v1/planner-poc/identity").status_code == 401
++
++
++def test_manager_cannot_claim_supervisor_or_read_another_identity(poc_client, db):
++    assert login(poc_client).status_code == 200
++    user = db.scalar(select(User).where(User.email == MANAGER))
++    # Even a correctly signed extra role claim must not override the DB role.
++    token = jwt.encode(
++        {
++            "sub": str(user.id),
++            "role": "supervisor",
++            "exp": datetime.now(UTC) + timedelta(minutes=1),
++        },
++        settings.jwt_secret,
++        algorithm=settings.jwt_algorithm,
++    )
++    poc_client.cookies.clear()
++    poc_client.cookies.set("access_token", token)
++    response = poc_client.get("/api/v1/planner-poc/identity?user_id=999&role=supervisor")
++    assert response.json() == {"canonical_user_id": user.id, "current_role": "manager"}
++    assert poc_client.get("/api/v1/planner-poc/supervisor-check").status_code == 403
++    assert poc_client.get("/api/v1/users").status_code == 403
++
++
++def test_supervisor_is_explicit_and_db_role_changes_apply_immediately(poc_client, db):
++    supervisor = User(
++        email="supervisor@testing.example.com",
++        full_name="Synthetic Supervisor",
++        hashed_password=hash_password(PASSWORD),
++        role=UserRole.SUPERVISOR,
++    )
++    db.add(supervisor)
++    db.commit()
++    assert login(poc_client, supervisor.email).status_code == 200
++    assert poc_client.get("/api/v1/planner-poc/supervisor-check").status_code == 200
++    supervisor.role = UserRole.MANAGER
++    db.commit()
++    assert poc_client.get("/api/v1/planner-poc/identity").json()["current_role"] == "manager"
++    assert poc_client.get("/api/v1/planner-poc/supervisor-check").status_code == 403
++
++
++def test_admin_identity_does_not_grant_planner_supervisor(poc_client):
++    assert login(poc_client, "admin@testing.example.com").status_code == 200
++    assert poc_client.get("/api/v1/users").status_code == 200  # Original LeadFlow admin retained.
++    assert poc_client.get("/api/v1/planner-poc/identity").json()["current_role"] == "admin"
++    assert poc_client.get("/api/v1/planner-poc/supervisor-check").status_code == 403
++
++
++def test_no_cookie_and_telegram_initdata_are_not_web_auth(poc_client):
++    for headers in (
++        {},
++        {"Authorization": "tma synthetic-initdata"},
++        {"X-Telegram-Init-Data": "synthetic-initdata"},
++    ):
++        assert poc_client.get("/api/v1/planner-poc/identity", headers=headers).status_code == 401
++
++
++def test_logout_removes_browser_cookie_but_legacy_token_replay_is_a_known_gap(poc_client):
++    assert login(poc_client).status_code == 200
++    old_cookie = poc_client.cookies.get("access_token")
++    assert poc_client.post("/api/v1/auth/logout").status_code == 204
++    assert not poc_client.cookies.get("access_token")
++    assert poc_client.get("/api/v1/planner-poc/identity").status_code == 401
++    # Document the inherited limitation; do NOT claim server-side revocation.
++    poc_client.cookies.set("access_token", old_cookie)
++    assert poc_client.get("/api/v1/planner-poc/identity").status_code == 200
++
++
++def test_auth_responses_and_logs_do_not_reveal_test_secrets(poc_client, caplog):
++    response = login(poc_client)
++    old_cookie = poc_client.cookies.get("access_token")
++    assert PASSWORD not in response.text
++    assert "hashed_password" not in response.text
++    assert old_cookie not in response.text
++    login(poc_client, password="synthetic-wrong-password")
++    assert PASSWORD not in caplog.text
++    assert "synthetic-wrong-password" not in caplog.text
++    assert old_cookie not in caplog.text
++
++
++def test_probe_is_not_registered_in_production_app():
++    assert not any("planner-poc" in getattr(route, "path", "") for route in production_app.routes)

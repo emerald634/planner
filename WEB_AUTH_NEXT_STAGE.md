@@ -1,5 +1,34 @@
 # Следующий этап: утверждённая политика web-входа и план реализации
 
+## Актуальное решение 23.10.2026 — единый LeadFlow/PostgreSQL вход
+
+Один продукт LeadFlow + «План дня», один backend/auth boundary и одни PostgreSQL
+users/credentials/sessions на основе LeadFlow. Ни отдельного Planner login,
+ни второй password DB/JWT-secret boundary. Полный план и найденные ограничения:
+UNIFIED_AUTH_INTEGRATION.md; реальные результаты: UNIFIED_AUTH_TEST_REPORT.md.
+
+SQLite foundation сохраняется как исторический результат и тестовые контракты;
+его физические auth-таблицы больше не production-путь единого входа. PR №6
+(HEAD7cc7808) открыт, не объединён, отдельный SQLite rollback-кандидат; его
+необходимость до PG решается отдельно. Старые планы SQLite/schema5 далее
+сохраняются **как история**, а не параллельное разрешение писать второй auth.
+
+90 дней от входа /30 дней без посещений, Secure/HttpOnly/CSRF, atomic reset
+руководителем (его пароль, код30мин, немедленно недействительный старый пароль,
+revoke всех сессий, pending до своего нового пароля) остаются требованиями.
+В текущем LeadFlow этого полного механизма ещё нет; просто JWT480 не заменяет его.
+Web не зависит от Telegram ACL, а Mini App продолжает отдельный HMAC/ACL.
+users.id ≠ employees.id, нужен explicit crosswalk, admin LeadFlow не является
+planner-supervisor автоматически. Реальные mapping/roles/active не менялись.
+
+Реализован только local PoC в отдельной копии LeadFlow, не в production app:
+один прежний /auth/login и shared get_current_user обслуживают /planner-poc/identity
+и диагностическую supervisor-check. В Planner добавлены лишь regression tests,
+никакого cookie fallback/API/миграции. LeadFlow изменения не опубликованы.
+Следующие auth/identity/PG data/business/UI PR — после отдельного review/решения.
+
+## История: SQLite-план, принятый до объединения
+
 Дата: 21.10.2026. Политика принята через PR №4, merge
 `50ec7e8b909a6a5522a80eba08f8f31e3ce39c1b`. Последующим заданием разрешён
 только локальный foundation в `feature/web-auth-foundation`. Он реализует
