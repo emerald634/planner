@@ -9,6 +9,13 @@
 > не объединён; его необходимость перед PG решается отдельно. Старые формулировки
 > про будущую SQLite web-auth ниже — история, а не параллельное разрешение её внедрять.
 
+> **Статус на 24.10.2026:** [PR №7](https://github.com/emerald634/planner/pull/7)
+> — **Merged**, объединён 23.10.2026 в 16:54:29 по Москве. SHA слияния:
+> `592db81abd47fced33986140dcd1cae4c9dbda9a`. Приняты архитектура и ограниченный
+> локальный identity PoC; общая production-авторизация ещё не реализована.
+> Дорожная карта — §31; история Git — §23. Копия в ChatGPT Project обновляется
+> отдельно после публикации этой редакции; факт синхронизации не подтверждён.
+
 Срез источников: 15 октября 2026 года, Europe/Moscow. Документ составлен по
 экспорту переписок, локальным исходникам и отчётам; production повторно не проверяется.
 
@@ -1150,14 +1157,35 @@ inactive_or_missing_manager, initiator_not_bound, import_retry. Интерфей
 
 ## 23. Версии, артефакты и установленное состояние
 
-23.10.2026 сверены удалённые HEAD: Planner main
+**Актуализация 24.10.2026:** GitHub подтвердил статус PR №7 **Merged**.
+Слияние выполнено 23.10.2026 в 13:54:29 UTC (16:54:29 Europe/Moscow).
+
+| Объект | Подтверждённое значение |
+|---|---|
+| PR №7 | https://github.com/emerald634/planner/pull/7 — Merged |
+| Merge SHA / main после PR №7 | `592db81abd47fced33986140dcd1cae4c9dbda9a` |
+| Исходный commit PR №7 | `f439017edc05ac0823ce5f8c18c7c02dd2885049` |
+| Ветка PR №7 | `docs/unified-auth-integration` |
+| Предыдущая main после PR №5 | `6501ef264e17f8a8c2ff166515a014c7c843b47c` |
+| PR №6 | Отдельный SQLite rollback-кандидат; не объединяется вслед за PR №7 |
+| LeadFlow local-only PoC | `feature/unified-auth-poc`, `837fbbfdb5d058fa4a9c15d20723cbcd03f969ef` |
+
+Main после слияния сверена через Git fetch. Слияние PR №7 принимает документы,
+два regression tests Planner и обзорный patch четырёх локальных файлов LeadFlow.
+Оно не публикует PoC в LeadFlow, не переносит данные в PostgreSQL, не включает
+web-auth в работающем Planner и не подтверждает установленную production-версию.
+Изменения настоящей редакции — отдельная документационная ветка от этой main;
+её собственный commit фиксируется в Git, а не подменяет SHA слияния PR №7.
+
+**Исторический срез до слияния PR №7, 23.10.2026:** сверены удалённые HEAD: Planner main
 6501ef264e17f8a8c2ff166515a014c7c843b47c; LeadFlow master
 d3e461f89532b997e8f236ae77f1fd15ed5515c9. PR №6 открыт, HEAD
 7cc780818a71b22b19d5db1cab7d6e697839aa41; не объединён/не закрыт/не удалён.
 Ветка Planner docs/unified-auth-integration основана на main, а не PR №6.
 Локальная копия LeadFlow: C:\Users\user\Documents\ChatGPT\План дня\lead-flow-auth-poc,
 ветка feature/unified-auth-poc, local commit 837fbbfdb5d058fa4a9c15d20723cbcd03f969ef.
-Никакого push/PR в LeadFlow нет; remote master и Planner main не менялись.
+В рамках этого среза push/PR в LeadFlow не было; remote master и Planner main
+не менялись. Позднейшее слияние Planner PR №7 зафиксировано выше.
 Production версия этим не подтверждается и не меняется; сервер не проверялся.
 
 **Актуализация 21.10.2026:** PR №4 объединён владельцем:
@@ -2187,6 +2215,26 @@ revocation, cookie/CSRF policy, rate limiting, supervisor account-admin API,
 
 ## 31. Утверждённое, но ещё не реализованное
 
+**Дорожная карта после принятия PR №7 (24.10.2026):** архитектурная сверка,
+ограниченный local-only identity PoC и его результаты приняты в Planner main.
+Повторное создание или принятие PR №7 больше не является следующим этапом.
+
+| Этап | Статус / условие продолжения |
+|---|---|
+| Архитектура единого входа и диагностический PoC | Завершён в рамках PR №7; без бизнес-данных и production-включения |
+| Публикация PoC в LeadFlow | Не выполнена; требуется отдельное разрешение и согласование с владельцем репозитория |
+| Усиление единой PostgreSQL-авторизации | Следующий программный этап только по отдельному разрешению: sessions 90/30, отзыв, logout, reset_pending, CSRF, foreground visit, все способы смены пароля, bounded rate limits и RAM |
+| Identity mapping | Явные соответствия сотрудников, active-конфликты и полномочия admin/supervisor согласовать до бизнес-доступа; не сопоставлять по имени или равным PK |
+| Перенос Planner SQLite → PostgreSQL | Отдельные additive migrations, synthetic PG-тесты, сохранение истории/FK/таймеров/очереди и проверка backup/restore; сейчас не выполняется |
+| Бизнес-API и общий React-интерфейс | После auth и identity/storage-контрактов: общая dependency/AuthProvider, прежние ownership/goal/report/timer проверки и отдельный Telegram HMAC/ACL |
+| Интеграционная приёмка и production | PG concurrency/load, HTTPS/browser, зависимости/security review и откат с актуальными данными; затем отдельное разрешение на release/cutover |
+
+Ограничения принятого PoC сохраняются: повтор JWT после logout пока возможен;
+PostgreSQL не проверен; npm audit неизменённого LeadFlow lockfile дал 7 замечаний
+(5 high, 2 moderate). Результаты 190/28/19 тестов относятся к проверкам 23.10.2026,
+а не к новому прогону после правки документа. SQLite foundation не удаляется;
+PR №6 остаётся отдельно сохранённым и не становится обязательным перед PG автоматически.
+
 Реально выполнен лишь local-only identity PoC в LeadFlow плюс архитектурная
 сверка; не выполнены общие server sessions90/30, revoke/logout/reset_pending,
 CSRF/visit, crosswalk рабочих сотрудников, PG migration/data/business API и общий UI.
@@ -2597,12 +2645,20 @@ permissions, новая rollback копия несекретного env, ста
 Решение владельца 23.10.2026 имеет приоритет: один LeadFlow/PostgreSQL web-auth,
 а не следующий независимый SQLite login/session PR Planner. Сохраняются 90/30,
 reset30min/немедленный запрет старого пароля, Telegram HMAC/ACL и исходные данные.
-Работа текущего этапа заканчивается на архитектуре/локальном identity PoC.
+Архитектура/локальный identity PoC приняты слиянием PR №7; этим этап завершён.
 Публикация изменений/PR в LeadFlow только после отдельного допуска владельца
 репозитория; local feature допустима, master/deploy workflow не трогать.
-Наш PR — docs + regression evidence/review patch, без merge. PR №6 сохраняется
+Прежнее указание «наш PR без merge» относилось к подготовке PR №7: теперь он
+Merged (`592db81abd47fced33986140dcd1cae4c9dbda9a`). PR №6 сохраняется
 открытым; вопрос его применения отдельно. Не переходить к PG/session/business
 реализации или production без следующего решения.
+
+**Синхронизация ChatGPT Project:** версия GitHub и загруженный в Project файл —
+отдельные копии. После публикации принятой редакции загрузить её в Project и
+проверить маркер «Статус на 24.10.2026», Merged и merge SHA PR №7. Не оставлять
+устаревшую и актуальную копии как конкурирующие источники. Обновление Git само
+по себе не подтверждает обновление Project; до проверки результат отмечать как
+«не синхронизировано / не подтверждено», а не заявлять о выполненной загрузке.
 
 Завершённое решение 21.10.2026: владелец разрешил объединить PR №2 и №3,
 оба Merged. PR №3 синхронизирован с новой main обычным merge `5a2d969`, без
@@ -2615,7 +2671,8 @@ PR №4 main синхронизирована с `50ec7e8b909a6a5522a80eba08f8f3
 manager reset руководителем после своего пароля, код 30 минут; additive schema5
 после проверенного bridge; основной rollback с актуальной БД. Исторические
 предложения ACL для web и 12 часов / 30 минут заменены этим решением.
-Актуальный порядок: PR №4 принят → отдельное разрешение на foundation получено →
+Исторический порядок до решения об объединении 23.10.2026 (заменён дорожной картой
+§31; foundation принят в PR №5, bridge PR №6 открыт): PR №4 принят → разрешение на foundation получено →
 локальный foundation по WEB_AUTH_FOUNDATION_SPEC.md реализован и проверен →
 создать его PR и остановиться на review → только по следующему разрешению
 самостоятельный compatibility bridge → следующие небольшие auth-PR.
