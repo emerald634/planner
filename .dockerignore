@@ -16,3 +16,5 @@
 !planner/distribution_queue.py
 !planner/queue_broker.py
 !planner/runtime_files.py
+
+!requirements-bot.lock.txt

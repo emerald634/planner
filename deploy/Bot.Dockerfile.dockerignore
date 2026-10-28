@@ -15,3 +15,5 @@
 !deploy/
 !deploy/Bot.Dockerfile
 !deploy/Bot.Dockerfile.dockerignore
+
+!requirements-bot.lock.txt
