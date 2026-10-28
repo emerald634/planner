@@ -32,6 +32,8 @@ def build():
 def package(target):
     if target.exists():
         raise FileExistsError("Choose a NEW release archive")
+    if subprocess.check_output(["git", "status", "--porcelain=v1"], cwd=ROOT).strip():
+        raise ValueError("Commit reviewed source or use a clean checkout before packaging")
     build()  # No stale-dist-only bypass. No dependency installation here.
     sys.path.insert(0, str(ROOT))
     from planner.frontend import validate_static
@@ -45,6 +47,8 @@ def package(target):
         ).hexdigest(),
     }
     files = {"frontend-build.json": json.dumps(manifest).encode()}
+    # Planner.Dockerfile uses this generated, ignored build manifest at root.
+    (ROOT / "frontend-build.json").write_bytes(files["frontend-build.json"])
     tracked = (
         subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT)
         .decode()
@@ -54,6 +58,7 @@ def package(target):
         if not name:
             continue
         path = Path(name)
+        assert not (ROOT / path).is_symlink(), name
         if path.suffix.lower() in {
             ".py",
             ".toml",
