@@ -9,3 +9,7 @@
 РЕАЛИЗОВАНО: единый web frontend/login,8 дневных показателей/сохранение/отчёты, distribution, один queue writer, прежний bot/Mini App, session/CSRF/ownership/local hold/recovery. ГОТОВО К REVIEW исходников; не разрешение установки. НЕ ПОДТВЕРЖДЕНО: Linux/PG/HTTPS/live CRM/combined load. ТРЕБУЕТ ОТДЕЛЬНОГО РАЗРЕШЕНИЯ: PG16/Docker/WSL/production/реальные данные/merge.
 
 Общие задачи/подпункты/«В течение дня»/D40 не реализованы. Planner core4, queue1, auth0005; business данные не мигрированы. Исторические root deployment-документы не заменяют актуальный deployment review. Вложение ChatGPT Project само от изменения Git не обновляется.
+
+## Итог самостоятельного репозитория
+
+Source snapshot4b6f51ac00f10759e1136a0522db91cb9dea7c47; web/ содержит полный принятый source, корневой planner/ единственный business core. В отдельном clone установлены свои dependencies и проверены236 Planner/94 web/60 frontend/33 Edge группы, обе React builds. Pydantic2.13.5 совместим с aiogram; bot/runtime/test pins и pnpm frozen lock находятся здесь. Runtime build context — корень; package_workspace создаёт source+prebuilt ZIP и schema/file/commit manifest. История внутренних документов не импортирована новой веткой. Полная база сохранена локально отдельно. Полный отчёт — COMPLETE_WORKSPACE_REPOSITORY_REPORT.md. Публикация только review-ветки/Draft PR, без main/merge/production. Linux images/UDS/mount/PG/HTTPS/live CRM/ресурсы всё ещё отдельные gates.
