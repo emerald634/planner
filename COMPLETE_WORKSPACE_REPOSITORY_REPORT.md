@@ -24,6 +24,8 @@
 - Основной import: `ca119a6f18a56b3b833422dc727a0c3b64750e33`.
 - Bot pins/build contexts: `84e77b9effb00038a71d5b56b26d6ec2153d224a`.
 - Итоговый программный snapshot: **`4b6f51ac00f10759e1136a0522db91cb9dea7c47`**.
+- Последующие CI-preparation/filter commits: `a1909e85be0a68ac82850df1c950be46cfbe6060`,
+  `49c93f6cf3a186567252131ddc0b91f68f9c9faf` (Linux CI success).
   Последующие commits документации/ссылки PR не меняют бизнес-код. Точный final
   source_commit подготовленного bundle записан в workspace-release.json.
 
@@ -145,7 +147,7 @@ Git objects, не только текущий файл. Искусственны
 deploy.yml имел автоматический SSH/compose запуск. Новый source-checks workflow
 только читает checkout, устанавливает dependencies и запускает synthetic tests/build;
 contents:read, нет SSH/deploy/production secrets/CRM-write/PG services.
-После push GitHub Actions подтвердили Linux frontend tests/build и установку Python3.12 dependencies. Первый synthetic job выявил4 packaging errors: miniapp/dist не был собран в этом отдельном job. Workflow/README исправлены: production Mini App build теперь предшествует Python regression; тесты не отключены. Повторный Linux run проверяется отдельно, не заменяет Docker/UDS/PG gates.
+После push GitHub Actions подтвердили Linux frontend tests/build и установку Python3.12 dependencies. Первый synthetic job выявил4 packaging errors: miniapp/dist не был собран в этом отдельном job. Workflow/README исправлены: production Mini App build теперь предшествует Python regression; тесты не отключены. Повторные Linux runs40692558325 и40692863075 завершились success: Ubuntu/Python3.12,236 Planner+94 web tests, frontend tests/lint/обе сборки. Ссылка: https://github.com/emerald634/planner/actions/runs/40692863075 . Это Linux source/dependency/regression proof, не Docker/kernel UDS/RO mounts/PG gate.
 
 ## 8. Release bundle
 
@@ -159,7 +161,7 @@ workspace-release.json, .manifest.json и .sha256; target существоват
 Source tests/fixtures входят как исходники; production Docker context исключает local_web/tests.
 Это review/source bundle, не опубликованный бинарный GitHub release и не production install proof.
 
-Локальный итоговый архив: `.workbench/clean-checkout/release-artifacts/workspace-complete-review-final-20261028.zip`
+Локальный итоговый архив: `.workbench/clean-checkout/release-artifacts/workspace-complete-review-pr9-20261028.zip`
 с соседними .sha256/.manifest.json. Они не добавляются в Git вместо исходников.
 Полная схема регенерации — README; исходник источника в отдельной папке не нужен.
 
