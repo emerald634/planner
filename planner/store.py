@@ -287,6 +287,11 @@ class Store:
         plan["summary"] = self.summary(plan["tasks"])
         plan["server_time"] = int(time.time())
         plan["initial_snapshot"] = json.loads(plan["initial_snapshot"]) if plan["initial_snapshot"] else None
+        # Compatible rollback and legacy Mini App must retain the daily snapshot
+        # on every confirmation/close path after the additive extension is installed.
+        if db.execute("SELECT 1 FROM sqlite_master WHERE name='daily_records'").fetchone():
+            from .daily import DailyStore
+            plan['daily']=DailyStore(self.path).daily_detail(db,actor,plan_id)
         return plan
 
     def get_plan(self, actor, plan_id):
@@ -399,6 +404,8 @@ class Store:
             before = self.plan(db, current, plan_id, True)
             if before["status"] == "approved":
                 return self.detail(db, current, plan_id)
+            from .server_migration import freeze_daily
+            freeze_daily(db,self,current,plan_id)
             snapshot = self.detail(db, current, plan_id)
             stamp = int(time.time())
             db.execute("UPDATE plans SET status='approved',initial_snapshot=?,approved_at=?,approved_by=? WHERE id=?",
@@ -413,6 +420,8 @@ class Store:
             before = self.plan(db, actor, plan_id, True)
             if before["status"] != "draft":
                 raise DomainError("План уже утверждён.")
+            from .server_migration import freeze_daily
+            freeze_daily(db,self,actor,plan_id)
             snapshot = self.detail(db, actor, plan_id)
             db.execute("UPDATE plans SET status='approved',initial_snapshot=?,approved_at=?,approved_by=? WHERE id=?",
                        (encode(snapshot), int(time.time()), actor["id"], plan_id))
@@ -485,6 +494,8 @@ class Store:
                 return json.loads(self.row(db, "SELECT snapshot FROM reports WHERE plan_id=?", (plan_id,))["snapshot"])
             if plan["day"] > today():
                 raise DomainError("Нельзя завершить будущий рабочий день.")
+            from .server_migration import freeze_daily
+            freeze_daily(db,self,actor,plan_id)
             for row in db.execute("SELECT * FROM tasks WHERE plan_id=?", (plan_id,)).fetchall():
                 task = dict(row)
                 if task["timer_started"] is not None:

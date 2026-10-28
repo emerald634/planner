@@ -1,0 +1,98 @@
+name: workspace-readiness-review
+# RECIPE ONLY. Do not run against existing production paths or the current RO Mini App.
+# No PostgreSQL service is installed/started here. DATABASE_URL must refer to the
+# separately approved canonical auth DB after its own integration gate.
+# DSN contents exist ONLY in owner-only files, never Compose interpolation/env.
+services:
+  web:
+    build:
+      context: ../..
+      dockerfile: web/deploy/Workspace.Dockerfile
+      target: runtime
+    image: workspace-readiness:review
+    user: "10001:10020"
+    read_only: true
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 96
+    ports: ["127.0.0.1:18180:8000"]
+    environment:
+      WORKSPACE_RUNTIME: "1"
+      WORKSPACE_CONFIG_FILE: /run/config/runtime.json
+      DATABASE_URL_FILE: /run/keys/auth-dsn
+      SESSION_ENVIRONMENT: production
+      COOKIE_SECURE: "true"
+      PUBLIC_APP_URL: ${REVIEW_ORIGIN:?Exact HTTPS origin required}
+      FRONTEND_URL: ${REVIEW_ORIGIN:?Exact HTTPS origin required}
+    volumes:
+      - type: bind
+        source: ${REVIEW_ROOT:?New isolated directory required}/planner
+        target: /data/planner
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/queue
+        target: /data/queue
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/socket
+        target: /run/writer
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/keys/web
+        target: /run/keys
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/web.json
+        target: /run/config/runtime.json
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs: [/tmp:size=32m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+  writer:
+    image: workspace-readiness:review
+    user: "10003:10020"
+    read_only: true
+    mem_limit: 192m
+    cpus: 0.5
+    pids_limit: 64
+    # Only a Unix socket. umask gives group access to approved web/bot processes.
+    command: ["sh","-c","umask 007; exec uvicorn workspace.writer:create_writer --factory --uds /run/writer/writer.sock --workers 1 --no-access-log --no-proxy-headers"]
+    environment:
+      WORKSPACE_RUNTIME: "1"
+      WORKSPACE_CONFIG_FILE: /run/config/runtime.json
+      DATABASE_URL_FILE: /run/keys/auth-dsn
+      SESSION_ENVIRONMENT: production
+      COOKIE_SECURE: "true"
+      PUBLIC_APP_URL: ${REVIEW_ORIGIN:?}
+      FRONTEND_URL: ${REVIEW_ORIGIN:?}
+    volumes:
+      - type: bind
+        source: ${REVIEW_ROOT:?}/planner
+        target: /data/planner
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/queue
+        target: /data/queue
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/socket
+        target: /run/writer
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/keys/writer
+        target: /run/keys
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/writer.json
+        target: /run/config/runtime.json
+        read_only: true
+        bind: {create_host_path: false}
+    tmpfs: [/tmp:size=16m,mode=1777]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]

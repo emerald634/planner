@@ -1,0 +1,41 @@
+# REVIEW ONLY. Future cutover must use the EXISTING project, never a second poller.
+name: bitrix-missed-calls-bot
+services:
+  bot:
+    image: ${BOT_WRITER_REVIEW_IMAGE:?New immutable image tag required}
+    build:
+      context: .
+      dockerfile: deploy/Bot.Dockerfile
+    user: "10001:10001"
+    group_add: ["10020"]
+    env_file: ["${PLANNER_BOT_ENV_FILE:?Existing private bot env, not supplied by this review}"]
+    environment:
+      ACCESS_DB_PATH: /data/access.db
+      DISTRIBUTION_QUEUE_PATH: ""
+      QUEUE_WRITER_SOCKET: /run/writer/writer.sock
+      QUEUE_WRITER_KEY_FILE: /run/keys/bot.key
+    volumes:
+      - type: bind
+        source: ${PLANNER_ACCESS_DIR:?Verified original access directory required}
+        target: /data
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?Separate explicitly reviewed writer directory required}/socket
+        target: /run/writer
+        read_only: true
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${REVIEW_ROOT:?}/keys/bot/bot.key
+        target: /run/keys/bot.key
+        read_only: true
+        bind: {create_host_path: false}
+    # No planner.db or queue mount. No plaintext credentials in this file.
+    read_only: true
+    tmpfs: [/tmp:size=16m,mode=1777]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    init: true
+    stop_grace_period: 30s

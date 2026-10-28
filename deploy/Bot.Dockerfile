@@ -6,6 +6,6 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && groupadd --gid 10001 bot \
     && useradd --uid 10001 --gid bot --no-create-home --shell /usr/sbin/nologin bot
 COPY access.py bitrix.py bot.py config.py distribution.py keyboards.py reminders.py ./
-COPY planner/__init__.py planner/distribution_queue.py ./planner/
+COPY planner/__init__.py planner/distribution_queue.py planner/queue_broker.py planner/runtime_files.py ./planner/
 USER 10001:10001
 CMD ["python", "bot.py"]
