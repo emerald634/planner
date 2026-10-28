@@ -33,6 +33,8 @@ class Config:
     distribution_confirmer_ids: frozenset[int] = frozenset()
     manager_telegram_ids: tuple[int, ...] = (0, 0, 0)
     planner_active_manager_ids: frozenset[int] = frozenset()
+    queue_writer_socket: Path | None = None
+    queue_writer_key_file: Path | None = None
 
     @property
     def stages(self) -> tuple[tuple[str, str], ...]:
@@ -53,6 +55,8 @@ def _parse_ids(name: str) -> frozenset[int]:
 
 def load_config(env_path: Path | None = None) -> Config:
     load_dotenv(env_path or Path(__file__).with_name(".env"), override=False)
+    if bool(os.getenv('QUEUE_WRITER_SOCKET')) != bool(os.getenv('QUEUE_WRITER_KEY_FILE')):
+        raise ConfigError('Настройте оба QUEUE_WRITER_SOCKET и QUEUE_WRITER_KEY_FILE; прямой fallback запрещён.')
     required = (
         "BOT_TOKEN", "BITRIX_WEBHOOK_URL", "MISSED_CALL_STAGE_ID",
         "MANAGER_1_NAME", "MANAGER_2_NAME", "MANAGER_3_NAME",
@@ -118,4 +122,6 @@ def load_config(env_path: Path | None = None) -> Config:
         distribution_confirmer_ids=_parse_ids("DISTRIBUTION_CONFIRMER_IDS"),
         manager_telegram_ids=manager_ids,
         planner_active_manager_ids=_parse_ids("PLANNER_ACTIVE_MANAGER_IDS"),
+        queue_writer_socket=Path(os.environ['QUEUE_WRITER_SOCKET']) if os.getenv('QUEUE_WRITER_SOCKET') else None,
+        queue_writer_key_file=Path(os.environ['QUEUE_WRITER_KEY_FILE']) if os.getenv('QUEUE_WRITER_KEY_FILE') else None,
     )

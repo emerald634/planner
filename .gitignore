@@ -91,3 +91,12 @@ build/
 exports/
 crm-dumps/
 chat-exports/
+
+# Unified workspace local-only output
+.workbench/
+web/frontend/dist-mvp/
+web/frontend/*.tsbuildinfo
+frontend-build.json
+release-artifacts/
+web/frontend/vite.config.js
+web/frontend/vite.config.d.ts

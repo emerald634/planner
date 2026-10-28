@@ -438,7 +438,7 @@ async def finish(target: Message | CallbackQuery, state: FSMContext,
     if notice:
         text = notice + "\n\n" + text
     await show(target, state, text, lambda rev: keyboards.results_menu(rev, bool(variants),
-               data["stage_ids"] == ("IN_PROCESS",) and state.key.user_id in config.distribution_confirmer_ids and config.distribution_queue_path is not None))
+               data["stage_ids"] == ("IN_PROCESS",) and state.key.user_id in config.distribution_confirmer_ids and (config.distribution_queue_path is not None or config.queue_writer_socket is not None)))
 
 
 async def skip_empty(callback: CallbackQuery, state: FSMContext, config: Config) -> None:
@@ -456,7 +456,7 @@ async def next_result(callback: CallbackQuery, state: FSMContext, config: Config
     await callback.answer()
     await show(callback, state, format_result(variants[index], index, len(variants), data["stage_names"],
                                              data["stage_ids"], data["stage_counts"]), lambda rev: keyboards.results_menu(rev, True,
-                                             data["stage_ids"] == ("IN_PROCESS",) and callback.from_user.id in config.distribution_confirmer_ids and config.distribution_queue_path is not None))
+                                             data["stage_ids"] == ("IN_PROCESS",) and callback.from_user.id in config.distribution_confirmer_ids and (config.distribution_queue_path is not None or config.queue_writer_socket is not None)))
     await state.update_data(variant_index=index)
 
 
@@ -465,14 +465,20 @@ async def confirm_distribution(callback: CallbackQuery, state: FSMContext, confi
     if callback.from_user.id not in config.distribution_confirmer_ids:
         await callback.answer("Нет права подтверждать распределение.", show_alert=True)
         return
-    if data.get("stage_ids") != ("IN_PROCESS",) or config.distribution_queue_path is None:
+    if data.get("stage_ids") != ("IN_PROCESS",) or (config.distribution_queue_path is None and config.queue_writer_socket is None):
         await callback.answer("Подтверждение доступно только для недозвонов IN_PROCESS при настроенной очереди.", show_alert=True)
         return
     await callback.answer("Проверяю актуальные недозвоны…")
     result = data["variants"][data["variant_index"]]
     identifier = str(uuid5(UUID(data["distribution_session"]), str(data["variant_index"])))
-    queue = DistributionQueue(config.distribution_queue_path)
+    queue = None
     try:
+        if config.queue_writer_socket is not None:
+            from planner.queue_broker import BrokerQueue
+            from planner.runtime_files import secret_file
+            queue = BrokerQueue(config.queue_writer_socket,secret_file(config.queue_writer_key_file),callback.from_user.id)
+        else:
+            queue = DistributionQueue(config.distribution_queue_path)
         await asyncio.to_thread(queue.initialize)
         existing = await asyncio.to_thread(queue.find, identifier)
         if existing is not None:
@@ -523,6 +529,9 @@ async def confirm_distribution(callback: CallbackQuery, state: FSMContext, confi
     except ValueError:
         await callback.message.answer("Данные изменились, обнаружен конфликт или на сегодня уже подтверждено другое распределение. Новая запись не создана. Нажмите «Новое распределение» для обновления расчёта.")
         return
+    finally:
+        if queue is not None and hasattr(queue,'close'):
+            queue.close()
     await callback.message.answer(confirmation_summary(snapshot))
 
 
@@ -604,7 +613,7 @@ async def main() -> None:
         await asyncio.to_thread(access.initialize, config.allowed_telegram_ids)
         users = await asyncio.to_thread(access.list_users)
         await asyncio.to_thread(access.ensure_private_reminders, set(users) | config.admin_telegram_ids)
-        if config.distribution_queue_path and config.distribution_confirmer_ids:
+        if config.distribution_queue_path and config.distribution_confirmer_ids and config.queue_writer_socket is None:
             try:
                 # Writer startup also recovers a hot DELETE journal after a crash.
                 await asyncio.to_thread(DistributionQueue(config.distribution_queue_path).initialize)

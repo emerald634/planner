@@ -55,7 +55,7 @@ def package(root: Path, target: Path, pnpm: str | None = None, stage2: bool = Fa
         raise FileExistsError("Контрольные файлы уже существуют; выберите новое имя.")
     files = list(FILES)
     if stage2:
-        files += ["bot.py", "bitrix.py", "config.py", "distribution.py", "keyboards.py", "reminders.py", "requirements.txt", "compose.bot.release.yaml", "deploy/Bot.Dockerfile", "deploy/Bot.Dockerfile.dockerignore", "deploy/bot-release-compose.sh", "STAGE2_1_RELEASE.md", "deploy/release_check.py", "deploy/sqlite_mount_check.py", "deploy/test_release_chain.py"]
+        files += ["bot.py", "bitrix.py", "config.py", "distribution.py", "keyboards.py", "reminders.py", "requirements.txt", "requirements-bot.lock.txt", "compose.bot.release.yaml", "deploy/Bot.Dockerfile", "deploy/Bot.Dockerfile.dockerignore", "deploy/bot-release-compose.sh", "STAGE2_1_RELEASE.md", "deploy/release_check.py", "deploy/sqlite_mount_check.py", "deploy/test_release_chain.py"]
         files += ['STAGE2_1_FINAL_CHECKS.md']
     elif planner_only:
         files += ['deploy/release_check.py', 'HOTFIX_2_1_1_RELEASE.md']

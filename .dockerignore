@@ -10,3 +10,11 @@
 !distribution.py
 !keyboards.py
 !reminders.py
+
+!planner/
+!planner/__init__.py
+!planner/distribution_queue.py
+!planner/queue_broker.py
+!planner/runtime_files.py
+
+!requirements-bot.lock.txt

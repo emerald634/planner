@@ -1,3 +1,4 @@
+-c requirements-bot.lock.txt
 aiogram>=3.31,<4
 httpx>=0.28,<0.29
 python-dotenv>=1.2,<2

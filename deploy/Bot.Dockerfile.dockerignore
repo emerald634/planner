@@ -10,6 +10,10 @@
 !planner/
 !planner/__init__.py
 !planner/distribution_queue.py
+!planner/queue_broker.py
+!planner/runtime_files.py
 !deploy/
 !deploy/Bot.Dockerfile
 !deploy/Bot.Dockerfile.dockerignore
+
+!requirements-bot.lock.txt

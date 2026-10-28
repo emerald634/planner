@@ -1,0 +1,13 @@
+{
+  "origin": "https://workspace.example.invalid",
+  "planner_path": "/data/planner/planner.db",
+  "queue_path": "/data/queue/distribution.db",
+  "frontend_path": "/app/frontend-dist",
+  "writer_socket": "/run/writer/writer.sock",
+  "csrf_secret_file": "/run/keys/csrf.key",
+  "web_service_secret_file": "/run/keys/web.key",
+  "bot_service_secret_file": "/run/keys/bot.key",
+  "crm_secret_file": null,
+  "verified_contracts": [],
+  "confirmer_ids": []
+}
