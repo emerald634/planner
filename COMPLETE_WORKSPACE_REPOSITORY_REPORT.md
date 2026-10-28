@@ -145,7 +145,7 @@ Git objects, не только текущий файл. Искусственны
 deploy.yml имел автоматический SSH/compose запуск. Новый source-checks workflow
 только читает checkout, устанавливает dependencies и запускает synthetic tests/build;
 contents:read, нет SSH/deploy/production secrets/CRM-write/PG services.
-CI-конфигурация проверена по исходнику; фактические GitHub jobs до push не запускались.
+После push GitHub Actions подтвердили Linux frontend tests/build и установку Python3.12 dependencies. Первый synthetic job выявил4 packaging errors: miniapp/dist не был собран в этом отдельном job. Workflow/README исправлены: production Mini App build теперь предшествует Python regression; тесты не отключены. Повторный Linux run проверяется отдельно, не заменяет Docker/UDS/PG gates.
 
 ## 8. Release bundle
 
@@ -185,11 +185,10 @@ Nginx/CRM/swap/production не затрагиваются этим задани�
 
 Review-ветка: https://github.com/emerald634/planner/tree/review/complete-workspace-20261028
 
-Draft PR: ожидает безопасной публикации после финального сканирования.
+Draft PR: **https://github.com/emerald634/planner/pull/9** — открыт, Draft, без merge.
 
 Публикация только в emerald634/planner, public сохраняется, main не меняется,
-Draft остаётся Draft, merge/deploy не выполняются. Финальная ссылка будет внесена
-после фактического создания, не выдана за существующую заранее.
+Draft остаётся Draft, merge/deploy не выполняются. GitHub подтвердил отсутствие конфликтов с main.
 Локальная полная внутренняя база дополнена картой monorepo/проверками/процессом
 release; публичная редакция и docs — в этом репозитории. ChatGPT Project автоматически
 не обновлён. Сопроводительные evidence JSON/скриншоты/private scratch остаются

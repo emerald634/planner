@@ -2,7 +2,7 @@
 
 Установить только requirements-workspace-dev.txt в чистую venv и оба pnpm frozen lock. Не добавлять PYTHONPATH на соседние репозитории, symlinks на author sources или fallback source paths. python tools/check_repository.py проверяет layout; synthetic launcher отвергает внешний planner-source.
 
-python -B -m tests.run_foundation_checks — весь Planner/бот/Mini App; python -B web/tools/run_session_checks.py — web backend. Они используют свои test-artifacts, запрещают реальные .env/SQLite и внешний egress. TestClient auth transport — synthetic SQLite, **не доказательство PG**. Actual bot callback/BrokerQueue/writer/importer проверяется без poller; UDS заменён ASGI только в Windows tests.
+Сначала `pnpm --dir miniapp build`: packaging regression использует настоящий miniapp/dist, не скрытый старый артефакт. Затем python -B -m tests.run_foundation_checks — весь Planner/бот/Mini App; python -B web/tools/run_session_checks.py — web backend. Они используют свои test-artifacts, запрещают реальные .env/SQLite и внешний egress. TestClient auth transport — synthetic SQLite, **не доказательство PG**. Actual bot callback/BrokerQueue/writer/importer проверяется без poller; UDS заменён ASGI только в Windows tests. В GitHub Actions каждый job сам подготавливает требуемый build; dist другого job не считается доступным.
 
 Frontend: pnpm --dir web/frontend test, lint, build. Mini App: pnpm --dir miniapp build. Для UI harness нужен установленный Edge; Playwright пакет из miniapp dependencies. Команды prepare/run/stop и два независимых RUN_ID — в README. Не публиковать созданные credentials/control files. Browser делает реальные local API mutations, CRM только synthetic.
 

@@ -14,6 +14,14 @@ jobs:
         with: {python-version: '3.12'}
       - run: python -m pip install -r requirements-workspace-dev.txt
       - run: python tools/check_repository.py
+      # Packaging regression tests consume a real production Mini App build.
+      # Jobs have separate filesystems: the frontend job's dist is not here.
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - uses: pnpm/action-setup@v4
+        with: {version: '11.25.0'}
+      - run: pnpm --dir miniapp install --frozen-lockfile
+      - run: pnpm --dir miniapp build
       - run: python -B -m tests.run_foundation_checks
       - run: python -B web/tools/run_session_checks.py
   frontend:

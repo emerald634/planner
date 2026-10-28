@@ -73,12 +73,12 @@ pnpm --dir miniapp install --frozen-lockfile
 
 ```bash
 python tools/check_repository.py
+pnpm --dir miniapp build
 python -B -m tests.run_foundation_checks
 python -B web/tools/run_session_checks.py
 pnpm --dir web/frontend test
 pnpm --dir web/frontend lint
 pnpm --dir web/frontend build
-pnpm --dir miniapp build
 ```
 
 Runner удаляет реальные secrets из test environment, запрещает внешние сети/рабочие SQLite/.env. Тесты CRM используют mocks. Telegram тесты проверяют callbacks без polling и настоящих сообщений. Не запускайте `bot.py` для регрессии.
